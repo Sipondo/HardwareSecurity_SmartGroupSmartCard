@@ -1,3 +1,11 @@
+#latex
+verslag.*
+!verslag.tex
+
+tex/pdflatex*
+tex/verslag.*
+!tex/verslag.tex
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
