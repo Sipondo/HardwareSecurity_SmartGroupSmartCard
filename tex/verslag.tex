@@ -5,18 +5,25 @@
 % Voor deliverables: zie slide 4 van:
 % http://www.cs.ru.nl/~erikpoll/hw/slides/project_assignment_part_1.pdf
 
-%A Car Rental firm is planning to use smartcards for several purposes.
-%Each customer is given a smartcard.
-%The smartcard is used to identify the customer
-%(with respect to the customer administration data base),
-%but it is also used as an ignition key,
-%and keeps track of the mileage during driving.
-
-%Design and implement such a system. The system consists of:
-
-%a "Rental Car" applet
-%a reception desk terminal
-%an on-board car terminal
+% Due to the unfortunate outcome of a war somewhere in the Middle East,
+% the government has found it necessary to introduce a rationing scheme for petrol,
+% where all car owners receive a fixed monthly petrol allowance.
+%
+% Design and implement a smartcard-based petrol rationing scheme.
+% This application should consist of:
+%
+% a petrol rationing applet, and
+% a petrol pump terminal
+% a charging terminal
+% All car owners are given a petrol rationing smartcard that keeps
+% track of how much of their petrol allowance they still have.
+% All petrol pumps are equipped with card terminals, and will only
+% supply petrol upon presentation of a petrol rationing smartcard,
+% and subtract the amount of petrol supplied from the allowance on that card.
+% There are special terminals for charging rationing cards.
+% Inserting the card in a charging terminal will increase the allowance
+% by the fixed monthly allowance - provided the card hasn't been charged
+% already that month.
 
 
 \title{Hardware Security Smartcard Proposal \\ Hardware Security 2017-2018}
