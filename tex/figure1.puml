@@ -1,0 +1,38 @@
+@startuml
+skinparam handwritten true
+skinparam packageStyle rectangle
+
+:Operator: as :oper:
+:Motorist: as :moto:
+:Manufacturer: as :manu:
+:Government: as :gove:
+
+rectangle NotSoGassed {
+  (Initialization) as (init)
+  (Procurement) as (proc)
+  (Charge allowance) as (char)
+  (Fetch gas) as (fetc)
+  (Lost or stolen) as (lost)
+  (Decommissioned) as (deco)
+
+  (proc) <-right- moto
+  (fetc) <-right- moto
+  (lost) <-right- moto
+  (deco) <-right- moto
+  (fetc) -right-> (char)
+
+  oper -down- (fetc)
+  oper -down- (char)
+
+  manu -right-> (init)
+  manu -right-> (deco)
+  (deco) -up-> (proc)
+  (lost) -down-> (deco)
+
+  gove -down-> (init)
+  (fetc) -up-> gove
+
+
+}
+
+@enduml
