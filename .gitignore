@@ -2,6 +2,7 @@
 #latex
 verslag.*
 !verslag.tex
+javacard
 
 tex/pdflatex*
 tex/verslag.*
