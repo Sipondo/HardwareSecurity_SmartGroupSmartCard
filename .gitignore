@@ -1,4 +1,5 @@
 *.jar
+!jcardsim-2.2.1-all.jar
 #latex
 verslag.*
 !verslag.tex
