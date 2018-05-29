@@ -47,6 +47,12 @@ public class CalcTerminal extends JPanel implements ActionListener {
     static final String MSG_DISABLED = " -- insert card --  ";
     static final String MSG_INVALID = " -- invalid card -- ";
 
+    private static final byte INST_CHARGING_REQUEST    = 'c' //Dit zijn de identifiers voor de communicatie. TODO: maak identifiers voor de communicatie terug.
+    private static final byte INST_CHARGING_FINISH     = 'd'
+    private static final byte INST_PUMPING_REQUEST     = 'o'
+    private static final byte INST_PUMPING_AUTH        = 'q'
+    private static final byte INST_PUMPING_FINISH      = 'r'
+
     static final byte[] CALC_APPLET_AID = { (byte) 0x12, (byte) 0x34,
             (byte) 0x56, (byte) 0x78, (byte) 0x90, (byte) 0xab };
 
@@ -74,12 +80,12 @@ public class CalcTerminal extends JPanel implements ActionListener {
         display.setForeground(Color.green);
         add(display, BorderLayout.NORTH);
         keypad = new JPanel(new GridLayout(3, 3));
-        key("c");
-        key("d");
+        key(INST_CHARGING_REQUEST);
+        key(INST_CHARGING_FINISH);
         key(null);
-        key("o");
-        key("q");
-        key("r");
+        key(INST_PUMPING_REQUEST);
+        key(INST_PUMPING_AUTH);
+        key(INST_PUMPING_FINISH);
         key("1");
         key("2");
         key("3");
@@ -112,6 +118,11 @@ public class CalcTerminal extends JPanel implements ActionListener {
     void setText(ResponseAPDU apdu) {
         byte[] data = apdu.getData();
         System.out.println(apdu.toString());
+
+
+            //TODO: Hier komen de APDU's uit. Hier dan maar identifiers inlezen?
+
+
         for(int i = 0; i < data.length; i++)
         {
           System.out.println(data[i]);

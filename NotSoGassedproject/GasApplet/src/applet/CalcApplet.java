@@ -23,9 +23,18 @@ import javacard.framework.*;
  */
 public class CalcApplet extends Applet implements ISO7816 {
 
+    private static final byte INST_CHARGING_REQUEST    = 'c'
+    private static final byte INST_CHARGING_FINISH     = 'd'
+    private static final byte INST_PUMPING_REQUEST     = 'o'
+    private static final byte INST_PUMPING_AUTH        = 'q'
+    private static final byte INST_PUMPING_FINISH      = 'r'
+
     private static final byte X = 0;
     private static final byte Y = 1;
-    private static final byte id = 42;
+
+    private static final byte ID = 42; //TODO: Deze moeten allemaal groter (shorts?) en specifieker
+    private static final byte publicKey = 14;
+    private static final byte certificate = 99;
 
     private short[] xy;
 
@@ -77,20 +86,20 @@ public class CalcApplet extends Applet implements ISO7816 {
 
         switch (ins) {
 
-        case 'c': //Charging protocol actie 1, Protocol Request
+        case INST_CHARGING_REQUEST: //Charging protocol actie 1, Protocol Request
             handleChargingProtocolRequest(buffer);
             break;
-        case 'd': //Charging protocol actie 5, Signature and session numbers
+        case INST_CHARGING_FINISH: //Charging protocol actie 5, Signature and session numbers
             finishChargingProtocol(buffer);
             break;
 
-        case 'o': //Pumping protocol actie 1, Protocol Request
+        case INST_PUMPING_REQUEST: //Pumping protocol actie 1, Protocol Request
             handlePumpingProtocolRequest(buffer);
             break;
-        case 'q': //Pumping protocol actie 3, Pump auth response, card auth request
+        case INST_PUMPING_AUTH: //Pumping protocol actie 3, Pump auth response, card auth request
             handlePumpingAuthResponse(buffer);
             break;
-        case 'r': //Pumping protocol actie 5, Allowance update
+        case INST_PUMPING_FINISH: //Pumping protocol actie 5, Allowance update
             finishPumpingAllowanceUpdate(buffer);
             break;
 
@@ -118,7 +127,7 @@ public class CalcApplet extends Applet implements ISO7816 {
         //Handle output: Card -> Terminal: Card auth response\nN2, A, sign(ID..A..N1..N2, sk(C))
         byte N2 = (byte) 81; //TODO: deze moet nog random gegenereerd worden
         //Byte A
-        byte sign = (byte) ((short) N1 + (short) N2 + (short) A + (short) id); //hier moet nog de secret key bij
+        byte sign = (byte) ((short) N1 + (short) N2 + (short) A + (short) ID); //hier moet nog de secret key bij
 
         //Write output
         buffer[5] = N2;
@@ -129,6 +138,7 @@ public class CalcApplet extends Applet implements ISO7816 {
     }
 
     void finishChargingProtocol(byte[] buffer){
+
         //Handle input: Terminal -> Card: Signature and session numbers\nencrypt(A .. sign(A..N1..N2, sk(G), pk(C))
         //TODO: pak de encrypt uit
 
@@ -142,22 +152,66 @@ public class CalcApplet extends Applet implements ISO7816 {
 
     void handlePumpingProtocolRequest(byte[] buffer){
 
+        //Handle input: Terminal -> Card: Protocol request, N1
+        byte N1 = buffer[5];
+
+        //Handle output: Card -> Terminal: Pump auth request\n ID, N1, N2, pk(c), C(c)
+        //Byte N1
+        byte N2 = (byte) 81; //TODO: deze moet nog random gegenereerd worden
+        //Byte publicKey //TODO: moet een int worden
+        //Byte certificate //TODO: moet een int worden
+
+        //Write output
+        buffer[5] = ID;
+        buffer[6] = N1;
+        buffer[7] = N2;
+        buffer[8] = publicKey;
+        buffer[9] = certificate;
+
+        messageLength = (short) 10;
     }
 
     void handlePumpingAuthResponse(byte[] buffer){
 
+      //Handle input: Terminal -> Card: Pump auth response, card auth request\nencrypt(N2..N1..pk(t)..C(t), pk(c))
+      //TODO: decrypt en pak uit
+
+      publicKeyTerminal = buffer[7]
+      certificateTerminal = buffer[8]
+      receivedPublicKey = buffer[9]
+
+      //TODO: Test of receivedPublicKey == publicKey
+
+      //Handle output: Card -> Terminal: Card auth response\n encrypt(A..N1..N2, pk(t))
+      //TODO: encrypt een output
+
+      buffer[5] = 42;
+
+      messageLength = (short) 6;
     }
 
     void finishPumpingAllowanceUpdate(byte[] buffer){
 
+      //Handle input: Terminal -> Card: Allowance update\n encrypt(A..N1..N2, pk(c))
+      //TODO: pak de encrypt uit
+
+
+      buffer[5] = 42;
+
+      messageLength = (short) 6;
     }
 
-
-
-
-
-
-
+    ///////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////
+    /////////////////// HIER EINDIGT ONZE ORIGINAL CODE ///////////////////
+    ///////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////
 
     void digit(byte d) {
         if (!lastKeyWasDigit[0]) {
