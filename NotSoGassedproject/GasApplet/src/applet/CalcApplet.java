@@ -5,26 +5,27 @@ import javacard.framework.*;
 /**
  * Sample Java Card Calculator applet which operates on signed shorts. Overflow
  * is silent.
- * 
+ *
  * The instructions are the ASCII characters of the keypad keys: '0' - '9', '+',
  * '-', * 'x', ':', '=', etc. This means that the terminal should send an APDU
  * for each key pressed.
- * 
+ *
  * Response APDU consists of 5 data bytes. First byte indicates whether the M
  * register contains a non-zero value. The third and fourth bytes encode the X
  * register (the signed short value to be displayed).
- * 
+ *
  * The only non-transient field is m. This means that m is stored in EEPROM and
  * all other memory used is RAM.
- * 
+ *
  * @author Martijn Oostdijk (martijno@cs.kun.nl)
  * @author Wojciech Mostowski (woj@cs.ru.nl)
- * 
+ *
  */
 public class CalcApplet extends Applet implements ISO7816 {
 
     private static final byte X = 0;
     private static final byte Y = 1;
+    private static final byte id = 42;
 
     private short[] xy;
 
@@ -34,6 +35,10 @@ public class CalcApplet extends Applet implements ISO7816 {
 
     private boolean[] lastKeyWasDigit;
 
+    private short messageLength;
+
+    private byte A; //TODO: maak een short
+
     public CalcApplet() {
         xy = JCSystem.makeTransientShortArray((short) 2,
                 JCSystem.CLEAR_ON_RESET);
@@ -42,6 +47,7 @@ public class CalcApplet extends Applet implements ISO7816 {
         lastKeyWasDigit = JCSystem.makeTransientBooleanArray((short) 1,
                 JCSystem.CLEAR_ON_RESET);
         m = 0;
+        A = (byte) 0;
         register();
     }
 
@@ -60,8 +66,9 @@ public class CalcApplet extends Applet implements ISO7816 {
 
     public void process(APDU apdu) throws ISOException, APDUException {
         byte[] buffer = apdu.getBuffer();
-        byte ins = buffer[OFFSET_INS];
+        byte ins = buffer[OFFSET_INS]; //Dit is de instructie byte, byte 1.
         short le = -1;
+        messageLength = (short) 0;
 
         /* Ignore the APDU that selects this applet... */
         if (selectingApplet()) {
@@ -69,51 +76,24 @@ public class CalcApplet extends Applet implements ISO7816 {
         }
 
         switch (ins) {
-        case '0':
-            digit((byte) 0);
+
+        case 'c': //Charging protocol actie 1, Protocol Request
+            handleChargingProtocolRequest(buffer);
             break;
-        case '1':
-            digit((byte) 1);
+        case 'd': //Charging protocol actie 5, Signature and session numbers
+            finishChargingProtocol(buffer);
             break;
-        case '2':
-            digit((byte) 2);
+
+        case 'o': //Pumping protocol actie 1, Protocol Request
+            handlePumpingProtocolRequest(buffer);
             break;
-        case '3':
-            digit((byte) 3);
+        case 'q': //Pumping protocol actie 3, Pump auth response, card auth request
+            handlePumpingAuthResponse(buffer);
             break;
-        case '4':
-            digit((byte) 4);
+        case 'r': //Pumping protocol actie 5, Allowance update
+            finishPumpingAllowanceUpdate(buffer);
             break;
-        case '5':
-            digit((byte) 5);
-            break;
-        case '6':
-            digit((byte) 6);
-            break;
-        case '7':
-            digit((byte) 7);
-            break;
-        case '8':
-            digit((byte) 8);
-            break;
-        case '9':
-            digit((byte) 9);
-            break;
-        case '+':
-        case '-':
-        case 'x':
-        case ':':
-        case '=':
-            operator(ins);
-            break;
-        case 'S':
-        case 'R':
-        case 'M':
-            mem(ins);
-            break;
-        case 'C':
-            select();
-            break;
+
         default:
             ISOException.throwIt(SW_INS_NOT_SUPPORTED);
         }
@@ -121,12 +101,63 @@ public class CalcApplet extends Applet implements ISO7816 {
         if (le < 5) {
             ISOException.throwIt((short) (SW_WRONG_LENGTH | 5));
         }
+
+        //Deze code zorgt dat het berichtje goed verstuurd wordt. Blijf af!
         buffer[0] = (m == 0) ? (byte) 0x00 : (byte) 0x01;
-        Util.setShort(buffer, (short) 1, (short) 0);
-        Util.setShort(buffer, (short) 3, xy[X]);
-        apdu.setOutgoingLength((short) 5);
-        apdu.sendBytes((short) 0, (short) 5);
+        apdu.setOutgoingLength(messageLength);
+        apdu.sendBytes((short) 0, messageLength);
     }
+
+    ///Charging Protocol
+
+    void handleChargingProtocolRequest(byte[] buffer){
+
+        //Handle input: Terminal -> Card: Protocol request, N1
+        byte N1 = buffer[5];
+
+        //Handle output: Card -> Terminal: Card auth response\nN2, A, sign(ID..A..N1..N2, sk(C))
+        byte N2 = (byte) 81; //TODO: deze moet nog random gegenereerd worden
+        //Byte A
+        byte sign = (byte) ((short) N1 + (short) N2 + (short) A + (short) id); //hier moet nog de secret key bij
+
+        //Write output
+        buffer[5] = N2;
+        buffer[6] = A;
+        buffer[7] = sign;
+
+        messageLength = (short) 8;
+    }
+
+    void finishChargingProtocol(byte[] buffer){
+        //Handle input: Terminal -> Card: Signature and session numbers\nencrypt(A .. sign(A..N1..N2, sk(G), pk(C))
+        //TODO: pak de encrypt uit
+
+
+        buffer[5] = 42;
+
+        messageLength = (short) 6;
+    }
+
+    ///Pumping Protocol
+
+    void handlePumpingProtocolRequest(byte[] buffer){
+
+    }
+
+    void handlePumpingAuthResponse(byte[] buffer){
+
+    }
+
+    void finishPumpingAllowanceUpdate(byte[] buffer){
+
+    }
+
+
+
+
+
+
+
 
     void digit(byte d) {
         if (!lastKeyWasDigit[0]) {

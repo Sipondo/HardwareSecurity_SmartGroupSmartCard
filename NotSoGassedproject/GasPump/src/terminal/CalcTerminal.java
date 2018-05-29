@@ -29,11 +29,11 @@ import javax.swing.JTextField;
 
 /**
  * Sample terminal for the Calculator applet.
- * 
+ *
  * @author Martijno
  * @author woj
  * @author Pim Vullers
- * 
+ *
  */
 public class CalcTerminal extends JPanel implements ActionListener {
 
@@ -52,7 +52,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
     static final CommandAPDU SELECT_APDU = new CommandAPDU(
     		(byte) 0x00, (byte) 0xA4, (byte) 0x04, (byte) 0x00, CALC_APPLET_AID);
-    
+
     JTextField display;
     JPanel keypad;
 
@@ -84,12 +84,12 @@ public class CalcTerminal extends JPanel implements ActionListener {
         key("9");
         key(":");
         key("ST");
-        key("4");
-        key("5");
-        key("6");
-        key("x");
+        key("c");
+        key("d");
+        key("p");
+        key("q");
         key("RM");
-        key("1");
+        key("r");
         key("2");
         key("3");
         key("-");
@@ -171,7 +171,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
     	    		System.err.println("No terminals with a card found.");
     	    		return;
     	    	}
-    	    	
+
     	    	while (true) {
     	    		try {
     	    			for(CardTerminal c : cs) {
@@ -227,6 +227,8 @@ public class CalcTerminal extends JPanel implements ActionListener {
         }
     }
 
+
+
     public void actionPerformed(ActionEvent ae) {
         try {
             Object src = ae.getSource();
@@ -246,7 +248,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
     }
 
     public ResponseAPDU sendKey(byte ins) {
-        CommandAPDU apdu = new CommandAPDU(0, ins, 0, 0, 5);
+        CommandAPDU apdu = new CommandAPDU(0, ins, 0, 0, 5); //Het 1e arg (byte) is de instructie, het 4e arg is de informatie (bytearray)
         try {
 			return applet.transmit(apdu);
 		} catch (CardException e) {

@@ -29,11 +29,11 @@ import javax.swing.JTextField;
 
 /**
  * Sample terminal for the Calculator applet.
- * 
+ *
  * @author Martijno
  * @author woj
  * @author Pim Vullers
- * 
+ *
  */
 public class CalcTerminal extends JPanel implements ActionListener {
 
@@ -52,7 +52,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
     static final CommandAPDU SELECT_APDU = new CommandAPDU(
     		(byte) 0x00, (byte) 0xA4, (byte) 0x04, (byte) 0x00, CALC_APPLET_AID);
-    
+
     JTextField display;
     JPanel keypad;
 
@@ -73,32 +73,16 @@ public class CalcTerminal extends JPanel implements ActionListener {
         display.setBackground(Color.darkGray);
         display.setForeground(Color.green);
         add(display, BorderLayout.NORTH);
-        keypad = new JPanel(new GridLayout(5, 5));
+        keypad = new JPanel(new GridLayout(3, 3));
+        key("c");
+        key("d");
         key(null);
-        key(null);
-        key(null);
-        key(null);
-        key("C");
-        key("7");
-        key("8");
-        key("9");
-        key(":");
-        key("ST");
-        key("4");
-        key("5");
-        key("6");
-        key("x");
-        key("RM");
+        key("o");
+        key("q");
+        key("r");
         key("1");
         key("2");
         key("3");
-        key("-");
-        key("M+");
-        key("0");
-        key(null);
-        key(null);
-        key("+");
-        key("=");
         add(keypad, BorderLayout.CENTER);
         parent.addWindowListener(new CloseEventListener());
     }
@@ -127,6 +111,11 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
     void setText(ResponseAPDU apdu) {
         byte[] data = apdu.getData();
+        System.out.println(apdu.toString());
+        for(int i = 0; i < data.length; i++)
+        {
+          System.out.println(data[i]);
+        }
         int sw = apdu.getSW();
         if (sw != 0x9000 || data.length < 5) {
             setText(MSG_ERROR);
@@ -171,7 +160,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
     	    		System.err.println("No terminals with a card found.");
     	    		return;
     	    	}
-    	    	
+
     	    	while (true) {
     	    		try {
     	    			for(CardTerminal c : cs) {
