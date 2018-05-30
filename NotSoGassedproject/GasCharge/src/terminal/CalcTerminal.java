@@ -27,6 +27,10 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 
+import java.util.Random;
+
+//import javacard.security.RandomData;
+
 /**
  * Sample terminal for the Calculator applet.
  *
@@ -47,11 +51,13 @@ public class CalcTerminal extends JPanel implements ActionListener {
     static final String MSG_DISABLED = " -- insert card --  ";
     static final String MSG_INVALID = " -- invalid card -- ";
 
-    private static final byte INST_CHARGING_REQUEST    = 'c' //Dit zijn de identifiers voor de communicatie. TODO: maak identifiers voor de communicatie terug.
-    private static final byte INST_CHARGING_FINISH     = 'd'
-    private static final byte INST_PUMPING_REQUEST     = 'o'
-    private static final byte INST_PUMPING_AUTH        = 'q'
-    private static final byte INST_PUMPING_FINISH      = 'r'
+    private static final byte INST_CHARGING_REQUEST    = 'c'; //Dit zijn de identifiers voor de communicatie. TODO: maak identifiers voor de communicatie terug.
+    private static final byte INST_CHARGING_FINISH     = 'd';
+    private static final byte INST_PUMPING_REQUEST     = 'o';
+    private static final byte INST_PUMPING_AUTH        = 'q';
+    private static final byte INST_PUMPING_FINISH      = 'r';
+
+    private Random rng;
 
     static final byte[] CALC_APPLET_AID = { (byte) 0x12, (byte) 0x34,
             (byte) 0x56, (byte) 0x78, (byte) 0x90, (byte) 0xab };
@@ -65,6 +71,8 @@ public class CalcTerminal extends JPanel implements ActionListener {
     CardChannel applet;
 
     public CalcTerminal(JFrame parent) {
+        rng = new Random();
+        System.out.println("Live");
         buildGUI(parent);
         setEnabled(false);
         (new CardThread()).start();
@@ -80,12 +88,12 @@ public class CalcTerminal extends JPanel implements ActionListener {
         display.setForeground(Color.green);
         add(display, BorderLayout.NORTH);
         keypad = new JPanel(new GridLayout(3, 3));
-        key(INST_CHARGING_REQUEST);
-        key(INST_CHARGING_FINISH);
+        key("c");//(String) INST_CHARGING_REQUEST);
+        key("d");//(String) INST_CHARGING_FINISH);
         key(null);
-        key(INST_PUMPING_REQUEST);
-        key(INST_PUMPING_AUTH);
-        key(INST_PUMPING_FINISH);
+        key("o");//(String) INST_PUMPING_REQUEST);
+        key("q");//(String) INST_PUMPING_AUTH);
+        key("r");//(String) INST_PUMPING_FINISH);
         key("1");
         key("2");
         key("3");
@@ -245,8 +253,38 @@ public class CalcTerminal extends JPanel implements ActionListener {
         }
     }
 
+    public byte[] shortToByteArray(short s){
+      byte[] b = new byte[2];
+      b[0] = (byte)(s & 0xff);
+      b[1] = (byte)((s >> 8) & 0xff);
+      return b;
+    }
+
+    public short generateNonce(){
+      return (short) rng.nextInt(Short.MAX_VALUE+1);
+    }
+
     public ResponseAPDU sendKey(byte ins) {
-        CommandAPDU apdu = new CommandAPDU(0, ins, 0, 0, 5);
+      CommandAPDU apdu;
+        switch(ins){
+          case INST_CHARGING_REQUEST:
+            byte[] data = shortToByteArray(generateNonce());
+
+            System.out.println("--------------------");
+            System.out.println((short) data[0]);
+            System.out.println((short) data[1]);
+            apdu = new CommandAPDU(0, ins, 0, 0, data);
+            break;
+
+          case INST_CHARGING_FINISH:
+            apdu = new CommandAPDU(0, 'c', 0, 0, 42);
+            break;
+
+          default:
+            apdu = new CommandAPDU(0, 'c', 0, 0, 42);
+            break;
+        }
+
         try {
 			return applet.transmit(apdu);
 		} catch (CardException e) {

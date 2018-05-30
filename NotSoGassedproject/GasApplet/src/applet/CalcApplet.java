@@ -1,6 +1,7 @@
 package applet;
 
 import javacard.framework.*;
+import javacard.security.*;
 
 /**
  * Sample Java Card Calculator applet which operates on signed shorts. Overflow
@@ -23,11 +24,11 @@ import javacard.framework.*;
  */
 public class CalcApplet extends Applet implements ISO7816 {
 
-    private static final byte INST_CHARGING_REQUEST    = 'c'
-    private static final byte INST_CHARGING_FINISH     = 'd'
-    private static final byte INST_PUMPING_REQUEST     = 'o'
-    private static final byte INST_PUMPING_AUTH        = 'q'
-    private static final byte INST_PUMPING_FINISH      = 'r'
+    private static final byte INST_CHARGING_REQUEST    = 'c';
+    private static final byte INST_CHARGING_FINISH     = 'd';
+    private static final byte INST_PUMPING_REQUEST     = 'o';
+    private static final byte INST_PUMPING_AUTH        = 'q';
+    private static final byte INST_PUMPING_FINISH      = 'r';
 
     private static final byte X = 0;
     private static final byte Y = 1;
@@ -35,6 +36,8 @@ public class CalcApplet extends Applet implements ISO7816 {
     private static final byte ID = 42; //TODO: Deze moeten allemaal groter (shorts?) en specifieker
     private static final byte publicKey = 14;
     private static final byte certificate = 99;
+
+    private RandomData rng;
 
     private short[] xy;
 
@@ -55,6 +58,8 @@ public class CalcApplet extends Applet implements ISO7816 {
                 JCSystem.CLEAR_ON_RESET);
         lastKeyWasDigit = JCSystem.makeTransientBooleanArray((short) 1,
                 JCSystem.CLEAR_ON_RESET);
+
+        rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
         m = 0;
         A = (byte) 0;
         register();
@@ -77,6 +82,7 @@ public class CalcApplet extends Applet implements ISO7816 {
         byte[] buffer = apdu.getBuffer();
         byte ins = buffer[OFFSET_INS]; //Dit is de instructie byte, byte 1.
         short le = -1;
+        byte input_length = buffer[4]; // byte 4 geeft het aantal bytes aan in de body
         messageLength = (short) 0;
 
         /* Ignore the APDU that selects this applet... */
@@ -112,9 +118,20 @@ public class CalcApplet extends Applet implements ISO7816 {
         }
 
         //Deze code zorgt dat het berichtje goed verstuurd wordt. Blijf af!
-        buffer[0] = (m == 0) ? (byte) 0x00 : (byte) 0x01;
+        //buffer[0] = (m == 0) ? (byte) 0x00 : (byte) 0x01;
         apdu.setOutgoingLength(messageLength);
         apdu.sendBytes((short) 0, messageLength);
+    }
+
+    public byte[] shortToByteArray(short s){
+      byte[] b = new byte[2];
+      b[0] = (byte)(s & 0xff);
+      b[1] = (byte)((s >> 8) & 0xff);
+      return b;
+    }
+
+    public short bufferToShort(byte[] buffer, short offset){
+      return (short)( ((buffer[offset] & 0xff)<<8) | (buffer[(short)(offset+1)] & 0xff) );
     }
 
     ///Charging Protocol
@@ -122,19 +139,19 @@ public class CalcApplet extends Applet implements ISO7816 {
     void handleChargingProtocolRequest(byte[] buffer){
 
         //Handle input: Terminal -> Card: Protocol request, N1
-        byte N1 = buffer[5];
+        short N1 = bufferToShort(buffer, (short) 5);
 
         //Handle output: Card -> Terminal: Card auth response\nN2, A, sign(ID..A..N1..N2, sk(C))
-        byte N2 = (byte) 81; //TODO: deze moet nog random gegenereerd worden
+        rng.generateData(buffer, (short) 5, (short) 2);
+        short N2 = bufferToShort(buffer, (short) 5);
         //Byte A
-        byte sign = (byte) ((short) N1 + (short) N2 + (short) A + (short) ID); //hier moet nog de secret key bij
+        byte sign = (byte) ((short) N1 + N2 + (short) A + (short) ID); //hier moet nog de secret key bij
 
         //Write output
-        buffer[5] = N2;
-        buffer[6] = A;
-        buffer[7] = sign;
+        buffer[7] = A;
+        buffer[8] = sign;
 
-        messageLength = (short) 8;
+        messageLength = (short) 9;
     }
 
     void finishChargingProtocol(byte[] buffer){
@@ -176,9 +193,9 @@ public class CalcApplet extends Applet implements ISO7816 {
       //Handle input: Terminal -> Card: Pump auth response, card auth request\nencrypt(N2..N1..pk(t)..C(t), pk(c))
       //TODO: decrypt en pak uit
 
-      publicKeyTerminal = buffer[7]
-      certificateTerminal = buffer[8]
-      receivedPublicKey = buffer[9]
+      byte publicKeyTerminal = buffer[7];
+      byte certificateTerminal = buffer[8];
+      byte receivedPublicKey = buffer[9];
 
       //TODO: Test of receivedPublicKey == publicKey
 
