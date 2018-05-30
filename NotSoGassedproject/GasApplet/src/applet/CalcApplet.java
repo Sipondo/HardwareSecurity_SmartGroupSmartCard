@@ -154,13 +154,20 @@ public class CalcApplet extends Applet implements ISO7816 {
       return (short)( ((buffer[offset] & 0xff)<<8) | (buffer[(short)(offset+1)] & 0xff) );
     }
 
-    public void encrypt(short length, byte[] buffer){
-      cardCipher.init(cardPrivateKey, Cipher.MODE_ENCRYPT);
-      //Util.arrayFillNonAtomic(cryptoBuffer, length, (short) (16-length), (byte) 0xAA);
+    public void encrypt(short length, byte[] buffer, PublicKey key){
+      cardCipher.init(key, Cipher.MODE_ENCRYPT);
       cardCipher.doFinal(cryptoBuffer, (short) 0, length, cryptoBuffer, (short) 0);
-      //cardCipher.doFinal(buffer, (short) 0, (short) 8, buffer, (short) 0);
     }
 
+    public void decrypt(short length, byte[] buffer){
+      cardCipher.init(cardPrivateKey, Cipher.MODE_DECRYPT);
+      cardCipher.doFinal(cryptoBuffer, (short) 0, length, cryptoBuffer, (short) 0);
+    }
+
+    public void sign(short length, byte[] buffer){
+      cardCipher.init(cardPrivateKey, Cipher.MODE_ENCRYPT);
+      cardCipher.doFinal(cryptoBuffer, (short) 0, length, cryptoBuffer, (short) 0);
+    }
     ///Charging Protocol
 
     void handleChargingProtocolRequest(byte[] buffer){
@@ -187,7 +194,7 @@ public class CalcApplet extends Applet implements ISO7816 {
         cryptoBuffer[6] = x_b[0];
         cryptoBuffer[7] = x_b[1];
 
-        encrypt((short) 8, buffer);
+        sign((short) 8, buffer);
 
         buffer[7] = cryptoBuffer[0];
         buffer[8] = cryptoBuffer[1];

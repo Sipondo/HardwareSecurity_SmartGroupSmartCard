@@ -29,20 +29,18 @@ import javax.swing.JTextField;
 
 import java.util.Random;
 
+import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
+import org.bouncycastle.crypto.params.RSAKeyGenerationParameters;
+import org.bouncycastle.crypto.generators.RSAKeyPairGenerator;
+
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+
 //import javacard.security.RandomData;
 
-/**
- * Sample terminal for the Calculator applet.
- *
- * @author Martijno
- * @author woj
- * @author Pim Vullers
- *
- */
 public class CalcTerminal extends JPanel implements ActionListener {
 
     private static final long serialVersionUID = 1L;
-    static final String TITLE = "Calculator";
+    static final String TITLE = "Terminal";
     static final Font FONT = new Font("Monospaced", Font.BOLD, 24);
     static final Dimension PREFERRED_SIZE = new Dimension(300, 300);
 
@@ -58,6 +56,9 @@ public class CalcTerminal extends JPanel implements ActionListener {
     private static final byte INST_PUMPING_FINISH      = 'r';
 
     private Random rng;
+    private RSAKeyPairGenerator keyPairGenerator;
+    private AsymmetricKeyParameter globalPrivateKey;
+    private AsymmetricKeyParameter globalPublicKey;
 
     static final byte[] CALC_APPLET_AID = { (byte) 0x12, (byte) 0x34,
             (byte) 0x56, (byte) 0x78, (byte) 0x90, (byte) 0xab };
@@ -73,6 +74,21 @@ public class CalcTerminal extends JPanel implements ActionListener {
     public CalcTerminal(JFrame parent) {
         rng = new Random();
         System.out.println("Live");
+
+        // Crypto constructor
+        keyPairGenerator = new RSAKeyPairGenerator();
+        keyPairGenerator.init(new RSAKeyGenerationParameters
+		     (
+		         new BigInteger("10001", 16),//publicExponent
+		         SecureRandom.getInstance("SHA1PRNG"),//pseudorandom number generator
+		         512,//strength
+		         80//certainty
+		     ));
+
+
+
+        // end Crypto constructor
+
         buildGUI(parent);
         setEnabled(false);
         (new CardThread()).start();
