@@ -2,6 +2,7 @@ package applet;
 
 import javacard.framework.*;
 import javacard.security.*;
+import javacardx.crypto.Cipher;
 
 /**
  * Sample Java Card Calculator applet which operates on signed shorts. Overflow
@@ -33,11 +34,16 @@ public class CalcApplet extends Applet implements ISO7816 {
     private static final byte X = 0;
     private static final byte Y = 1;
 
-    private static final byte ID = 42; //TODO: Deze moeten allemaal groter (shorts?) en specifieker
-    private static final byte publicKey = 14;
+    private static final short ID = (short) 42; //TODO: Deze moeten allemaal groter (shorts?) en specifieker
     private static final byte certificate = 99;
 
+    private static RSAPrivateKey cardPrivateKey;
+    private static RSAPublicKey cardPublicKey;
+    private static KeyPair cardKeyPair;
+    private static Cipher cardCipher;
+
     private RandomData rng;
+    private byte[] cryptoBuffer;
 
     private short[] xy;
 
@@ -49,7 +55,7 @@ public class CalcApplet extends Applet implements ISO7816 {
 
     private short messageLength;
 
-    private byte A; //TODO: maak een short
+    private short A;
 
     public CalcApplet() {
         xy = JCSystem.makeTransientShortArray((short) 2,
@@ -59,9 +65,23 @@ public class CalcApplet extends Applet implements ISO7816 {
         lastKeyWasDigit = JCSystem.makeTransientBooleanArray((short) 1,
                 JCSystem.CLEAR_ON_RESET);
 
+        cryptoBuffer = JCSystem.makeTransientByteArray((short) 128, JCSystem.CLEAR_ON_RESET);
         rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
+
+        try{
+          cardKeyPair = new KeyPair(KeyPair.ALG_RSA, KeyBuilder.LENGTH_RSA_512);
+          cardKeyPair.genKeyPair();
+          cardPrivateKey = (RSAPrivateKey) cardKeyPair.getPrivate();
+          cardPublicKey = (RSAPublicKey) cardKeyPair.getPublic();
+          cardCipher = Cipher.getInstance(Cipher.ALG_RSA_PKCS1, false);
+        } catch (CryptoException e) {
+          short reason = e.getReason();
+          ISOException.throwIt(reason);
+        }
+
+
         m = 0;
-        A = (byte) 0;
+        A = (short) 0;
         register();
     }
 
@@ -134,6 +154,13 @@ public class CalcApplet extends Applet implements ISO7816 {
       return (short)( ((buffer[offset] & 0xff)<<8) | (buffer[(short)(offset+1)] & 0xff) );
     }
 
+    public void encrypt(short length, byte[] buffer){
+      cardCipher.init(cardPrivateKey, Cipher.MODE_ENCRYPT);
+      //Util.arrayFillNonAtomic(cryptoBuffer, length, (short) (16-length), (byte) 0xAA);
+      cardCipher.doFinal(cryptoBuffer, (short) 0, length, cryptoBuffer, (short) 0);
+      //cardCipher.doFinal(buffer, (short) 0, (short) 8, buffer, (short) 0);
+    }
+
     ///Charging Protocol
 
     void handleChargingProtocolRequest(byte[] buffer){
@@ -141,17 +168,37 @@ public class CalcApplet extends Applet implements ISO7816 {
         //Handle input: Terminal -> Card: Protocol request, N1
         short N1 = bufferToShort(buffer, (short) 5);
 
+        cryptoBuffer[0] = buffer[5];
+        cryptoBuffer[1] = buffer[6];
+
         //Handle output: Card -> Terminal: Card auth response\nN2, A, sign(ID..A..N1..N2, sk(C))
         rng.generateData(buffer, (short) 5, (short) 2);
         short N2 = bufferToShort(buffer, (short) 5);
         //Byte A
-        byte sign = (byte) ((short) N1 + N2 + (short) A + (short) ID); //hier moet nog de secret key bij
 
-        //Write output
-        buffer[7] = A;
-        buffer[8] = sign;
+        cryptoBuffer[2] = buffer[5];
+        cryptoBuffer[3] = buffer[6];
 
-        messageLength = (short) 9;
+        byte[] x_b = shortToByteArray(A);
+        cryptoBuffer[4] = x_b[0];
+        cryptoBuffer[5] = x_b[1];
+
+        x_b = shortToByteArray(ID);
+        cryptoBuffer[6] = x_b[0];
+        cryptoBuffer[7] = x_b[1];
+
+        encrypt((short) 8, buffer);
+
+        buffer[7] = cryptoBuffer[0];
+        buffer[8] = cryptoBuffer[1];
+        buffer[9] = cryptoBuffer[2];
+        buffer[10] = cryptoBuffer[3];
+        buffer[11] = cryptoBuffer[4];
+        buffer[12] = cryptoBuffer[5];
+        buffer[13] = cryptoBuffer[6];
+        buffer[14] = cryptoBuffer[7];
+
+        messageLength = (short) 15;
     }
 
     void finishChargingProtocol(byte[] buffer){
@@ -182,7 +229,7 @@ public class CalcApplet extends Applet implements ISO7816 {
         buffer[5] = ID;
         buffer[6] = N1;
         buffer[7] = N2;
-        buffer[8] = publicKey;
+        //buffer[8] = publicKey;
         buffer[9] = certificate;
 
         messageLength = (short) 10;
