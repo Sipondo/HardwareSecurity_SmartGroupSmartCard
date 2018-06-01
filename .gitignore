@@ -4,6 +4,8 @@
 verslag.*
 !verslag.tex
 javacard
+.idea/
+*.iml
 
 tex/pdflatex*
 tex/verslag.*
