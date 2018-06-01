@@ -27,13 +27,22 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 
-import java.util.Random;
+import java.security.SecureRandom;
+import java.math.BigInteger;
 
-import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
-import org.bouncycastle.crypto.params.RSAKeyGenerationParameters;
-import org.bouncycastle.crypto.generators.RSAKeyPairGenerator;
+import java.util.Random;
+import java.util.Base64;
+import java.util.Arrays;
+
+import java.security.*;
+import java.security.spec.*;
+import java.security.interfaces.*;
+
+import javax.crypto.Cipher;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+
+
 
 //import javacard.security.RandomData;
 
@@ -56,9 +65,9 @@ public class CalcTerminal extends JPanel implements ActionListener {
     private static final byte INST_PUMPING_FINISH      = 'r';
 
     private Random rng;
-    private RSAKeyPairGenerator keyPairGenerator;
-    private AsymmetricKeyParameter globalPrivateKey;
-    private AsymmetricKeyParameter globalPublicKey;
+
+    RSAPrivateKey globalPrivateKey;
+    RSAPublicKey globalPublicKey;
 
     static final byte[] CALC_APPLET_AID = { (byte) 0x12, (byte) 0x34,
             (byte) 0x56, (byte) 0x78, (byte) 0x90, (byte) 0xab };
@@ -72,20 +81,73 @@ public class CalcTerminal extends JPanel implements ActionListener {
     CardChannel applet;
 
     public CalcTerminal(JFrame parent) {
+        Security.addProvider(new BouncyCastleProvider());
         rng = new Random();
         System.out.println("Live");
+        // Provider providers[] = Security.getProviders();
+        // System.out.println(providers.length);
+        //
 
-        // Crypto constructor
-        keyPairGenerator = new RSAKeyPairGenerator();
-        keyPairGenerator.init(new RSAKeyGenerationParameters
-		     (
-		         new BigInteger("10001", 16),//publicExponent
-		         SecureRandom.getInstance("SHA1PRNG"),//pseudorandom number generator
-		         512,//strength
-		         80//certainty
-		     ));
+        Key privKey;
+        try{
+          KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA", "BC");
+          SecureRandom random = new SecureRandom();
+          generator.initialize(512, random);
+
+          KeyPair pair = generator.generateKeyPair();
+          globalPublicKey = (RSAPublicKey) pair.getPublic();
+          globalPrivateKey = (RSAPrivateKey) pair.getPrivate();
+
+          System.out.println("\npublic length:" + globalPublicKey.getEncoded().length);
+          System.out.println("private length:" + globalPrivateKey.getEncoded().length);
+          System.out.println("\npublickey : " + Base64.getEncoder().encodeToString(globalPublicKey.getEncoded()));
+          System.out.println("privatekey : " + Base64.getEncoder().encodeToString(globalPrivateKey.getEncoded()));
+
+          System.out.println("\n\npublic modulus: " + globalPublicKey.getModulus());
+          System.out.println("public exponent: " + globalPublicKey.getPublicExponent());
+          System.out.println("\nprivate modulus: " + globalPrivateKey.getModulus());
+          System.out.println("private exponent: " + globalPrivateKey.getPrivateExponent());
+          System.out.println("\n");
+
+          byte[] ser = serializeKey(globalPublicKey);
+          System.out.println("serialized key: " + Base64.getEncoder().encodeToString(ser));
+          System.out.println("\npublickey : " + Base64.getEncoder().encodeToString(globalPublicKey.getEncoded()));
+          System.out.println("public key (deser): " + Base64.getEncoder().encodeToString(deserializeKey(ser,(short)0).getEncoded()));
 
 
+
+        // }catch(Exception e){
+        //   System.out.println("Failed to construct keys!");
+        //   System.out.println(e);
+        // }
+        //
+        // //Encrypt-decrypt test
+        //
+        // try{
+          Cipher cip = Cipher.getInstance("RSA");
+          cip.init(Cipher.ENCRYPT_MODE, globalPublicKey);
+
+          byte[] message = new byte[5];
+          message[0] = 'h';
+          message[1] = 'a';
+          message[2] = 'l';
+          message[3] = 'l';
+          message[4] = 'o';
+
+          byte[] output = cip.doFinal(message);//, 0, 5);
+
+          Cipher decip = Cipher.getInstance("RSA");
+          decip.init(Cipher.DECRYPT_MODE, globalPrivateKey);
+
+          byte[] input = decip.doFinal(output);
+
+          System.out.println("plain hallo : " + new String(message));
+          System.out.println("encrypted hallo : " + new String(output));
+          System.out.println("decrypted hallo : " + new String(input));
+        }catch(Exception e){
+          System.out.println("Failed to construct cipher!");
+          System.out.println(e);
+        }
 
         // end Crypto constructor
 
@@ -104,9 +166,9 @@ public class CalcTerminal extends JPanel implements ActionListener {
         display.setForeground(Color.green);
         add(display, BorderLayout.NORTH);
         keypad = new JPanel(new GridLayout(3, 3));
+        key("b");
         key("c");//(String) INST_CHARGING_REQUEST);
         key("d");//(String) INST_CHARGING_FINISH);
-        key(null);
         key("o");//(String) INST_PUMPING_REQUEST);
         key("q");//(String) INST_PUMPING_AUTH);
         key("r");//(String) INST_PUMPING_FINISH);
@@ -115,6 +177,55 @@ public class CalcTerminal extends JPanel implements ActionListener {
         key("3");
         add(keypad, BorderLayout.CENTER);
         parent.addWindowListener(new CloseEventListener());
+    }
+
+    //reads the key object and stores it into the buffer
+    private final byte[] serializeKey(RSAPublicKey key) {
+        BigInteger exponent = key.getPublicExponent();
+        BigInteger modulus = key.getModulus();
+
+        byte[] exponentBytes = exponent.toByteArray();
+        byte[] modulusBytes = modulus.toByteArray();
+
+        short expLen = (short) exponentBytes.length;
+        short modLen = (short) modulusBytes.length;
+
+        byte[] buffer = new byte[expLen+modLen+4];
+        byte[] b;
+
+        b = shortToByteArray(expLen);
+        buffer[0] = b[0];
+        buffer[1] = b[1];
+
+        System.arraycopy(exponentBytes, 0, buffer, 2, expLen);
+
+        b = shortToByteArray(modLen);
+        buffer[2+expLen] = b[0];
+        buffer[3+expLen] = b[1];
+        System.arraycopy(modulusBytes, 0, buffer, 4+expLen, modLen);
+
+        return buffer;
+    }
+
+    //reads the key from the buffer and stores it inside the key object
+  private final RSAPublicKey deserializeKey(byte[] buffer, short offset) {
+        short expLen = bufferToShort(buffer, offset);
+        short modLen = bufferToShort(buffer, (short) ((short) offset + (short)((short) 2 +expLen)));
+
+        byte[] exponentBytes = Arrays.copyOfRange(buffer, offset+2, offset+2+expLen);
+        byte[] modulusBytes = Arrays.copyOfRange(buffer, offset+4+expLen, offset+4+modLen+expLen);
+
+        BigInteger exponent = new BigInteger(exponentBytes);
+        BigInteger modulus = new BigInteger(modulusBytes);
+
+        RSAPublicKeySpec keySpec = new RSAPublicKeySpec(modulus, exponent);
+        try{
+          KeyFactory kf = KeyFactory.getInstance("RSA");
+          Key generatePublic = kf.generatePublic(keySpec);
+          return (RSAPublicKey) generatePublic;
+        }catch(Exception e){}
+        System.out.println("KAPOT\nKAPOT\nKAPOT\nKAPOT\nKAPOT\nKAPOT\nKAPOT\nKAPOT\nKAPOT\nKAPOT\n");
+        return globalPublicKey; //anders compiled het niet LOL
     }
 
     void key(String txt) {
@@ -146,10 +257,11 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
             //TODO: Hier komen de APDU's uit. Hier dan maar identifiers inlezen?
 
-
+        System.out.println(new String(data));
         for(int i = 0; i < data.length; i++)
         {
-          System.out.println(data[i]);
+          System.out.print(data[i]);
+          System.out.print(" ");
         }
         int sw = apdu.getSW();
         if (sw != 0x9000 || data.length < 5) {
@@ -271,9 +383,13 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
     public byte[] shortToByteArray(short s){
       byte[] b = new byte[2];
-      b[0] = (byte)(s & 0xff);
-      b[1] = (byte)((s >> 8) & 0xff);
+      b[0] = (byte)((s >> 8) & 0xff);
+      b[1] = (byte)(s & 0xff);
       return b;
+    }
+
+    public short bufferToShort(byte[] buffer, short offset){
+      return (short)( ((buffer[offset] & 0xff)<<8) | (buffer[(short)(offset+1)] & 0xff) );
     }
 
     public short generateNonce(){
@@ -297,7 +413,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
             break;
 
           default:
-            apdu = new CommandAPDU(0, 'c', 0, 0, 42);
+            apdu = new CommandAPDU(0, ins, 0, 0, 42);
             break;
         }
 

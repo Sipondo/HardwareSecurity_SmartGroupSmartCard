@@ -25,6 +25,7 @@ import javacardx.crypto.Cipher;
  */
 public class CalcApplet extends Applet implements ISO7816 {
 
+    private static final byte INST_INIT                = 'b';
     private static final byte INST_CHARGING_REQUEST    = 'c';
     private static final byte INST_CHARGING_FINISH     = 'd';
     private static final byte INST_PUMPING_REQUEST     = 'o';
@@ -56,6 +57,10 @@ public class CalcApplet extends Applet implements ISO7816 {
     private short messageLength;
 
     private short A;
+
+    private boolean useLong;
+
+    private byte[] extendedBuffer;
 
     public CalcApplet() {
         xy = JCSystem.makeTransientShortArray((short) 2,
@@ -104,6 +109,7 @@ public class CalcApplet extends Applet implements ISO7816 {
         short le = -1;
         byte input_length = buffer[4]; // byte 4 geeft het aantal bytes aan in de body
         messageLength = (short) 0;
+        useLong = false;
 
         /* Ignore the APDU that selects this applet... */
         if (selectingApplet()) {
@@ -112,6 +118,9 @@ public class CalcApplet extends Applet implements ISO7816 {
 
         switch (ins) {
 
+        case INST_INIT:
+            handleInitialize(buffer);
+            break;
         case INST_CHARGING_REQUEST: //Charging protocol actie 1, Protocol Request
             handleChargingProtocolRequest(buffer);
             break;
@@ -140,13 +149,17 @@ public class CalcApplet extends Applet implements ISO7816 {
         //Deze code zorgt dat het berichtje goed verstuurd wordt. Blijf af!
         //buffer[0] = (m == 0) ? (byte) 0x00 : (byte) 0x01;
         apdu.setOutgoingLength(messageLength);
-        apdu.sendBytes((short) 0, messageLength);
+        if (useLong){
+          apdu.sendBytesLong(extendedBuffer, (short) 0, messageLength);
+        }else{
+          apdu.sendBytes((short) 0, messageLength);
+        }
     }
 
     public byte[] shortToByteArray(short s){
       byte[] b = new byte[2];
-      b[0] = (byte)(s & 0xff);
-      b[1] = (byte)((s >> 8) & 0xff);
+      b[0] = (byte)((s >> 8) & 0xff);
+      b[1] = (byte)(s & 0xff);
       return b;
     }
 
@@ -168,6 +181,37 @@ public class CalcApplet extends Applet implements ISO7816 {
       cardCipher.init(cardPrivateKey, Cipher.MODE_ENCRYPT);
       cardCipher.doFinal(cryptoBuffer, (short) 0, length, cryptoBuffer, (short) 0);
     }
+
+    //reads the key object and stores it into the buffer
+    private final short serializeKey(RSAPublicKey key, byte[] buffer, short offset) {
+        short expLen = key.getExponent(buffer, (short) (offset + 2));
+        Util.setShort(buffer, offset, expLen);
+        short modLen = key.getModulus(buffer, (short) (offset + 4 + expLen));
+        Util.setShort(buffer, (short) (offset + (short) ((short) 2 + expLen)), modLen);
+        return (short) (4 + expLen + modLen);
+    }
+
+    //reads the key from the buffer and stores it inside the key object
+    private final short deserializeKey(RSAPublicKey key, byte[] buffer, short offset) {
+        short expLen = Util.getShort(buffer, offset);
+        key.setExponent(buffer, (short) (offset + 2), expLen);
+        short modLen = Util.getShort(buffer, (short) (offset + 2 + expLen));
+        key.setModulus(buffer, (short) (offset + 4 + expLen), modLen);
+        return (short) (4 + expLen + modLen);
+    }
+
+    //initialize
+
+    void handleInitialize(byte[] buffer){
+
+        //Stuur public key terug
+
+        useLong = false;
+        short lel = serializeKey(cardPublicKey, buffer, (short) 5);
+
+        messageLength = (short) lel;
+    }
+
     ///Charging Protocol
 
     void handleChargingProtocolRequest(byte[] buffer){
