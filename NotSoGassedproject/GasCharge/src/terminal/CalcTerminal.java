@@ -92,7 +92,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
         try{
           KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA", "BC");
           SecureRandom random = new SecureRandom();
-          generator.initialize(512, random);
+          generator.initialize(1024, random);
 
           KeyPair pair = generator.generateKeyPair();
           globalPublicKey = (RSAPublicKey) pair.getPublic();
@@ -143,7 +143,14 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
           System.out.println("plain hallo : " + new String(message));
           System.out.println("encrypted hallo : " + new String(output));
+          System.out.println(output.length);
+          for(int i = 0; i < output.length; i++)
+          {
+            System.out.print(output[i]);
+            System.out.print(" ");
+          }
           System.out.println("decrypted hallo : " + new String(input));
+          System.out.println(input.length);
         }catch(Exception e){
           System.out.println("Failed to construct cipher!");
           System.out.println(e);
@@ -179,13 +186,24 @@ public class CalcTerminal extends JPanel implements ActionListener {
         parent.addWindowListener(new CloseEventListener());
     }
 
+    private byte[] bigIntFixer(BigInteger source){
+      byte[] array = source.toByteArray();
+      if (array[0] == 0) {
+          byte[] tmp = new byte[array.length - 1];
+          System.arraycopy(array, 1, tmp, 0, tmp.length);
+          array = tmp;
+      }
+      return array;
+    }
+
+
     //reads the key object and stores it into the buffer
     private final byte[] serializeKey(RSAPublicKey key) {
         BigInteger exponent = key.getPublicExponent();
         BigInteger modulus = key.getModulus();
 
         byte[] exponentBytes = exponent.toByteArray();
-        byte[] modulusBytes = modulus.toByteArray();
+        byte[] modulusBytes = bigIntFixer(modulus);
 
         short expLen = (short) exponentBytes.length;
         System.out.println("\n\nHey hallo!");
@@ -285,11 +303,23 @@ public class CalcTerminal extends JPanel implements ActionListener {
             if (data[4] == 92){
               //System.out.println("public key (deser): " + Base64.getEncoder().encodeToString(deserializeKey(data,(short)6).getEncoded()));
               try{
-                Cipher decip = Cipher.getInstance("RSA");
+                Cipher decip = Cipher.getInstance("RSA");///ECB/PKCS1PADDING");
                 decip.init(Cipher.DECRYPT_MODE, globalPrivateKey);
 
-                byte[] input = decip.doFinal(data, 5, 64);
-                System.out.println("decrypted hallo : " + new String(input));
+                System.out.println("");
+                System.out.println("");
+                System.out.println(data[5]);
+                System.out.println(data[132]);
+
+                byte[] mes = Arrays.copyOfRange(data, 5, 133);
+
+                System.out.println("");
+                System.out.println(mes[0]);
+                System.out.println(mes[127]);
+
+
+                byte[] input = decip.doFinal(mes);
+                System.out.println("decrypted dingetje : " + new String(input));
               }catch(Exception e){
                 System.out.println("Failed to construct cipher!");
                 System.out.println(e);
@@ -445,6 +475,11 @@ public class CalcTerminal extends JPanel implements ActionListener {
             apdu = new CommandAPDU(0, ins, 0, 0, ser);
             System.out.println(apdu.toString());
             System.out.println(ser.length);
+            // for(int i = 0; i < ser.length; i++)
+            // {
+            //   System.out.print(ser[i]);
+            //   System.out.print(" ");
+            // }
             break;
           default:
             apdu = new CommandAPDU(0, ins, 0, 0, 42);

@@ -76,7 +76,7 @@ public class CalcApplet extends Applet implements ISO7816 {
         rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
 
         try{
-          cardKeyPair = new KeyPair(KeyPair.ALG_RSA, KeyBuilder.LENGTH_RSA_512);
+          cardKeyPair = new KeyPair(KeyPair.ALG_RSA, KeyBuilder.LENGTH_RSA_1024);
           cardKeyPair.genKeyPair();
           cardPrivateKey = (RSAPrivateKey) cardKeyPair.getPrivate();
           cardPublicKey = (RSAPublicKey) cardKeyPair.getPublic();
@@ -108,6 +108,7 @@ public class CalcApplet extends Applet implements ISO7816 {
     }
 
     public void process(APDU apdu) throws ISOException, APDUException {
+        short numBytes = apdu.setIncomingAndReceive();
         byte[] buffer = apdu.getBuffer();
         byte ins = buffer[OFFSET_INS]; //Dit is de instructie byte, byte 1.
         short le = -1;
@@ -197,13 +198,15 @@ public class CalcApplet extends Applet implements ISO7816 {
 
     //reads the key from the buffer and stores it inside the key object
     private final void deserializeKey(RSAPublicKey key, byte[] buffer, short offset) {
+        //RSAPublicKey key = (RSAPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_PUBLIC, (short) 1024, true);
+        // key.clearKey();
         short expLen = bufferToShort(buffer, offset);
-        key.setExponent(buffer, (short) (offset + (short) 2), expLen);
-        short modLen = (short) 5;//bufferToShort(buffer, (short) (offset + 2 + expLen));
+        short modLen = (short) 128;//bufferToShort(buffer, (short) (offset + 2 + expLen));
         short modplace = (short) (offset + (short)((short) 4 + expLen));
-        try{
-          key.setModulus(buffer, (short) 10, modLen);
-        }catch(Exception e){}
+        //try{
+
+        key.setExponent(buffer, (short) (offset + (short) 2), expLen);
+        key.setModulus(buffer, modplace, modLen);
     }
 
     //initialize
@@ -308,13 +311,13 @@ public class CalcApplet extends Applet implements ISO7816 {
       //TODO: encrypt een output
       //handleInitialize(buffer);
       // buffer[5] = (byte) 221;
+      buffer[4] = 92;
       deserializeKey(globalPublicKey, buffer, (short) 5);
       buffer[0] = 0;
-      buffer[1] = 0 ;
+      buffer[1] = 0;
       buffer[2] = 0;
       buffer[3] = 0;
       //buffer[11] = buffer[4];
-      buffer[4] = 92;
 
       cryptoBuffer[0] = 'h';
       cryptoBuffer[1] = 'e';
@@ -326,8 +329,15 @@ public class CalcApplet extends Applet implements ISO7816 {
       // short modLen = bufferToShort(buffer, (short) (offset + (short)((short) 2 + expLen)));
       // byte[] b = shortToByteArray(expLen);
       // short modplace = (short) (offset + (short)((short) 4 + expLen));
+      // byte[] b = shortToByteArray(cardPublicKey.getModulus(buffer, (short) 14));
       // buffer[5] = b[0];
       // buffer[6] = b[1];
+      // buffer[7] = 0;
+      // buffer[8] = 0;
+      // buffer[10] = 0;
+      // buffer[11] = 0;
+      // buffer[12] = 0;
+      // buffer[13] = 0;
       // b = shortToByteArray(modLen);
       // buffer[7] = b[0];
       // buffer[8] = b[1];
@@ -336,7 +346,7 @@ public class CalcApplet extends Applet implements ISO7816 {
       // buffer[10] = buffer[(short)((short)(modplace+modLen) - (short) 1)];
       // buffer[12] = 0;
 
-      //messageLength = (short) 13;
+      //messageLength = (short) 14;
 
       messageLength = (short) ((short) 5 + encrypt((short) 4, globalPublicKey, buffer, (short) 5));
     }
