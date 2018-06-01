@@ -40,6 +40,8 @@ public class CalcApplet extends Applet implements ISO7816 {
 
     private static RSAPrivateKey cardPrivateKey;
     private static RSAPublicKey cardPublicKey;
+    private RSAPrivateKey globalPrivateKey;
+    private RSAPublicKey globalPublicKey;
     private static KeyPair cardKeyPair;
     private static Cipher cardCipher;
 
@@ -78,6 +80,8 @@ public class CalcApplet extends Applet implements ISO7816 {
           cardKeyPair.genKeyPair();
           cardPrivateKey = (RSAPrivateKey) cardKeyPair.getPrivate();
           cardPublicKey = (RSAPublicKey) cardKeyPair.getPublic();
+          globalPublicKey = (RSAPublicKey) cardKeyPair.getPublic();
+
           cardCipher = Cipher.getInstance(Cipher.ALG_RSA_PKCS1, false);
         } catch (CryptoException e) {
           short reason = e.getReason();
@@ -167,12 +171,12 @@ public class CalcApplet extends Applet implements ISO7816 {
       return (short)( ((buffer[offset] & 0xff)<<8) | (buffer[(short)(offset+1)] & 0xff) );
     }
 
-    public void encrypt(short length, byte[] buffer, PublicKey key){
+    public short encrypt(short length, PublicKey key, byte[] buffer, short offset){
       cardCipher.init(key, Cipher.MODE_ENCRYPT);
-      cardCipher.doFinal(cryptoBuffer, (short) 0, length, cryptoBuffer, (short) 0);
+      return cardCipher.doFinal(cryptoBuffer, (short) 0, length, buffer, offset);
     }
 
-    public void decrypt(short length, byte[] buffer){
+    public void decrypt(short length){
       cardCipher.init(cardPrivateKey, Cipher.MODE_DECRYPT);
       cardCipher.doFinal(cryptoBuffer, (short) 0, length, cryptoBuffer, (short) 0);
     }
@@ -192,12 +196,14 @@ public class CalcApplet extends Applet implements ISO7816 {
     }
 
     //reads the key from the buffer and stores it inside the key object
-    private final short deserializeKey(RSAPublicKey key, byte[] buffer, short offset) {
-        short expLen = Util.getShort(buffer, offset);
-        key.setExponent(buffer, (short) (offset + 2), expLen);
-        short modLen = Util.getShort(buffer, (short) (offset + 2 + expLen));
-        key.setModulus(buffer, (short) (offset + 4 + expLen), modLen);
-        return (short) (4 + expLen + modLen);
+    private final void deserializeKey(RSAPublicKey key, byte[] buffer, short offset) {
+        short expLen = bufferToShort(buffer, offset);
+        key.setExponent(buffer, (short) (offset + (short) 2), expLen);
+        short modLen = (short) 5;//bufferToShort(buffer, (short) (offset + 2 + expLen));
+        short modplace = (short) (offset + (short)((short) 4 + expLen));
+        try{
+          key.setModulus(buffer, (short) 10, modLen);
+        }catch(Exception e){}
     }
 
     //initialize
@@ -206,10 +212,11 @@ public class CalcApplet extends Applet implements ISO7816 {
 
         //Stuur public key terug
 
+        buffer[4] = 123;
         useLong = false;
         short lel = serializeKey(cardPublicKey, buffer, (short) 5);
 
-        messageLength = (short) lel;
+        messageLength = (short)((short) lel+ (short) 5);
     }
 
     ///Charging Protocol
@@ -258,9 +265,9 @@ public class CalcApplet extends Applet implements ISO7816 {
         //TODO: pak de encrypt uit
 
 
-        buffer[5] = 42;
+        buffer[4] = 42;
 
-        messageLength = (short) 6;
+        messageLength = (short) 5;
     }
 
     ///Pumping Protocol
@@ -291,18 +298,47 @@ public class CalcApplet extends Applet implements ISO7816 {
       //Handle input: Terminal -> Card: Pump auth response, card auth request\nencrypt(N2..N1..pk(t)..C(t), pk(c))
       //TODO: decrypt en pak uit
 
-      byte publicKeyTerminal = buffer[7];
-      byte certificateTerminal = buffer[8];
-      byte receivedPublicKey = buffer[9];
+      // byte publicKeyTerminal = buffer[7];
+      // byte certificateTerminal = buffer[8];
+      // byte receivedPublicKey = buffer[9];
 
       //TODO: Test of receivedPublicKey == publicKey
 
       //Handle output: Card -> Terminal: Card auth response\n encrypt(A..N1..N2, pk(t))
       //TODO: encrypt een output
+      //handleInitialize(buffer);
+      // buffer[5] = (byte) 221;
+      deserializeKey(globalPublicKey, buffer, (short) 5);
+      buffer[0] = 0;
+      buffer[1] = 0 ;
+      buffer[2] = 0;
+      buffer[3] = 0;
+      //buffer[11] = buffer[4];
+      buffer[4] = 92;
 
-      buffer[5] = 42;
+      cryptoBuffer[0] = 'h';
+      cryptoBuffer[1] = 'e';
+      cryptoBuffer[2] = 'l';
+      cryptoBuffer[3] = 'p';
 
-      messageLength = (short) 6;
+      // short offset = 5;
+      // short expLen = bufferToShort(buffer, offset);
+      // short modLen = bufferToShort(buffer, (short) (offset + (short)((short) 2 + expLen)));
+      // byte[] b = shortToByteArray(expLen);
+      // short modplace = (short) (offset + (short)((short) 4 + expLen));
+      // buffer[5] = b[0];
+      // buffer[6] = b[1];
+      // b = shortToByteArray(modLen);
+      // buffer[7] = b[0];
+      // buffer[8] = b[1];
+      // buffer[9] = buffer[modplace];
+      // //buffer[10] = 42;
+      // buffer[10] = buffer[(short)((short)(modplace+modLen) - (short) 1)];
+      // buffer[12] = 0;
+
+      //messageLength = (short) 13;
+
+      messageLength = (short) ((short) 5 + encrypt((short) 4, globalPublicKey, buffer, (short) 5));
     }
 
     void finishPumpingAllowanceUpdate(byte[] buffer){

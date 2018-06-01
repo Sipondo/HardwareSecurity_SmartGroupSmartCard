@@ -188,7 +188,10 @@ public class CalcTerminal extends JPanel implements ActionListener {
         byte[] modulusBytes = modulus.toByteArray();
 
         short expLen = (short) exponentBytes.length;
+        System.out.println("\n\nHey hallo!");
+        System.out.println(expLen);
         short modLen = (short) modulusBytes.length;
+        System.out.println(modLen);
 
         byte[] buffer = new byte[expLen+modLen+4];
         byte[] b;
@@ -252,12 +255,15 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
     void setText(ResponseAPDU apdu) {
         byte[] data = apdu.getData();
-        System.out.println(apdu.toString());
-
-
+        //System.out.println(apdu.toString());
             //TODO: Hier komen de APDU's uit. Hier dan maar identifiers inlezen?
 
+        System.out.println("\n\n\nRECEIVING APDU:");
         System.out.println(new String(data));
+        System.out.println(data.length);
+        System.out.println("\n");
+
+
         for(int i = 0; i < data.length; i++)
         {
           System.out.print(data[i]);
@@ -268,6 +274,29 @@ public class CalcTerminal extends JPanel implements ActionListener {
             setText(MSG_ERROR);
         } else {
             setText((short) (((data[3] & 0x000000FF) << 8) | (data[4] & 0x000000FF)));
+
+
+            //Dit is de apdu reader
+            if (data[4] == 123){
+              System.out.println("public key (deser): " + Base64.getEncoder().encodeToString(deserializeKey(data,(short)5).getEncoded()));
+            }
+
+            //Dit is de apdu reader
+            if (data[4] == 92){
+              //System.out.println("public key (deser): " + Base64.getEncoder().encodeToString(deserializeKey(data,(short)6).getEncoded()));
+              try{
+                Cipher decip = Cipher.getInstance("RSA");
+                decip.init(Cipher.DECRYPT_MODE, globalPrivateKey);
+
+                byte[] input = decip.doFinal(data, 5, 64);
+                System.out.println("decrypted hallo : " + new String(input));
+              }catch(Exception e){
+                System.out.println("Failed to construct cipher!");
+                System.out.println(e);
+              }
+            }
+
+
             setMemory(data[0] == 0x01);
         }
     }
@@ -411,13 +440,25 @@ public class CalcTerminal extends JPanel implements ActionListener {
           case INST_CHARGING_FINISH:
             apdu = new CommandAPDU(0, 'c', 0, 0, 42);
             break;
-
+          case INST_PUMPING_AUTH:
+            byte[] ser = serializeKey(globalPublicKey);
+            apdu = new CommandAPDU(0, ins, 0, 0, ser);
+            System.out.println(apdu.toString());
+            System.out.println(ser.length);
+            break;
           default:
             apdu = new CommandAPDU(0, ins, 0, 0, 42);
             break;
         }
 
         try {
+      byte[] data = apdu.getData();
+      System.out.println("\n\nSENT APDU:");
+      for(int i = 0; i < data.length; i++)
+      {
+        System.out.print(data[i]);
+        System.out.print(" ");
+      }
 			return applet.transmit(apdu);
 		} catch (CardException e) {
 			return null;
