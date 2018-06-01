@@ -38,10 +38,11 @@ public class CalcApplet extends Applet implements ISO7816 {
     private static final short ID = (short) 42; //TODO: Deze moeten allemaal groter (shorts?) en specifieker
     private static final byte certificate = 99;
 
+    private static final short RSA_TYPE = 1024;
+    private static final short RSA_BLOCKSIZE = 128;
+
     private static RSAPrivateKey cardPrivateKey;
     private static RSAPublicKey cardPublicKey;
-    private RSAPrivateKey globalPrivateKey;
-    private RSAPublicKey globalPublicKey;
     private static KeyPair cardKeyPair;
     private static Cipher cardCipher;
 
@@ -72,15 +73,15 @@ public class CalcApplet extends Applet implements ISO7816 {
         lastKeyWasDigit = JCSystem.makeTransientBooleanArray((short) 1,
                 JCSystem.CLEAR_ON_RESET);
 
-        cryptoBuffer = JCSystem.makeTransientByteArray((short) 128, JCSystem.CLEAR_ON_RESET);
+        cryptoBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
+        extendedBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
         rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
 
         try{
-          cardKeyPair = new KeyPair(KeyPair.ALG_RSA, KeyBuilder.LENGTH_RSA_1024);
+          cardKeyPair = new KeyPair(KeyPair.ALG_RSA, RSA_TYPE);
           cardKeyPair.genKeyPair();
           cardPrivateKey = (RSAPrivateKey) cardKeyPair.getPrivate();
           cardPublicKey = (RSAPublicKey) cardKeyPair.getPublic();
-          globalPublicKey = (RSAPublicKey) cardKeyPair.getPublic();
 
           cardCipher = Cipher.getInstance(Cipher.ALG_RSA_PKCS1, false);
         } catch (CryptoException e) {
@@ -191,22 +192,20 @@ public class CalcApplet extends Applet implements ISO7816 {
     private final short serializeKey(RSAPublicKey key, byte[] buffer, short offset) {
         short expLen = key.getExponent(buffer, (short) (offset + 2));
         Util.setShort(buffer, offset, expLen);
-        short modLen = key.getModulus(buffer, (short) (offset + 4 + expLen));
-        Util.setShort(buffer, (short) (offset + (short) ((short) 2 + expLen)), modLen);
-        return (short) (4 + expLen + modLen);
+        Util.setShort(buffer, (short) (offset + (short) ((short) 2 + expLen)), RSA_BLOCKSIZE);
+        return (short) (4 + expLen + RSA_BLOCKSIZE);
     }
 
     //reads the key from the buffer and stores it inside the key object
-    private final void deserializeKey(RSAPublicKey key, byte[] buffer, short offset) {
-        //RSAPublicKey key = (RSAPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_PUBLIC, (short) 1024, true);
-        // key.clearKey();
+    private final RSAPublicKey deserializeKey(byte[] buffer, short offset) {
+        RSAPublicKey key = (RSAPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_PUBLIC, RSA_TYPE, false);
         short expLen = bufferToShort(buffer, offset);
-        short modLen = (short) 128;//bufferToShort(buffer, (short) (offset + 2 + expLen));
         short modplace = (short) (offset + (short)((short) 4 + expLen));
-        //try{
 
         key.setExponent(buffer, (short) (offset + (short) 2), expLen);
-        key.setModulus(buffer, modplace, modLen);
+        key.setModulus(buffer, modplace, RSA_BLOCKSIZE);
+
+        return key;
     }
 
     //initialize
@@ -312,43 +311,45 @@ public class CalcApplet extends Applet implements ISO7816 {
       //handleInitialize(buffer);
       // buffer[5] = (byte) 221;
       buffer[4] = 92;
-      deserializeKey(globalPublicKey, buffer, (short) 5);
+      RSAPublicKey globalPublicKey = deserializeKey(buffer, (short) 5);
       buffer[0] = 0;
       buffer[1] = 0;
       buffer[2] = 0;
       buffer[3] = 0;
       //buffer[11] = buffer[4];
 
+      //short crypto_l = serializeKey(globalPublicKey, cryptoBuffer, (short) 0);
       cryptoBuffer[0] = 'h';
       cryptoBuffer[1] = 'e';
       cryptoBuffer[2] = 'l';
       cryptoBuffer[3] = 'p';
-
-      // short offset = 5;
-      // short expLen = bufferToShort(buffer, offset);
-      // short modLen = bufferToShort(buffer, (short) (offset + (short)((short) 2 + expLen)));
-      // byte[] b = shortToByteArray(expLen);
-      // short modplace = (short) (offset + (short)((short) 4 + expLen));
-      // byte[] b = shortToByteArray(cardPublicKey.getModulus(buffer, (short) 14));
-      // buffer[5] = b[0];
-      // buffer[6] = b[1];
-      // buffer[7] = 0;
-      // buffer[8] = 0;
-      // buffer[10] = 0;
-      // buffer[11] = 0;
-      // buffer[12] = 0;
-      // buffer[13] = 0;
-      // b = shortToByteArray(modLen);
-      // buffer[7] = b[0];
-      // buffer[8] = b[1];
-      // buffer[9] = buffer[modplace];
-      // //buffer[10] = 42;
-      // buffer[10] = buffer[(short)((short)(modplace+modLen) - (short) 1)];
-      // buffer[12] = 0;
-
-      //messageLength = (short) 14;
-
-      messageLength = (short) ((short) 5 + encrypt((short) 4, globalPublicKey, buffer, (short) 5));
+      cryptoBuffer[4] = ' ';
+      cryptoBuffer[5] = 'm';
+      cryptoBuffer[6] = 'i';
+      cryptoBuffer[7] = 'j';
+      cryptoBuffer[8] = ' ';
+      cryptoBuffer[9] = 'u';
+      cryptoBuffer[10] = 'i';
+      cryptoBuffer[11] = 't';
+      cryptoBuffer[12] = ' ';
+      cryptoBuffer[13] = 'm';
+      cryptoBuffer[14] = 'i';
+      cryptoBuffer[15] = 'j';
+      cryptoBuffer[16] = 'n';
+      cryptoBuffer[17] = ' ';
+      cryptoBuffer[18] = 'l';
+      cryptoBuffer[19] = 'i';
+      cryptoBuffer[20] = 'j';
+      cryptoBuffer[21] = 'd';
+      cryptoBuffer[22] = 'e';
+      cryptoBuffer[23] = 'n';
+      cryptoBuffer[24] = '!';
+      //encrypt(crypto_l, globalPublicKey, extendedBuffer, (short) 0);
+      //useLong = true;
+      //messageLength = (short) 5;
+      //messageLength = (short) ((short) 5 + encrypt((short) 110, globalPublicKey, extendedBuffer, (short) 5));
+      messageLength = (short) ((short) 5 + encrypt((short) 25, globalPublicKey, buffer, (short) 5));
+      // messageLength = (short) ((short) 5 + encrypt(crypto_l, globalPublicKey, extendedBuffer, (short) 0));
     }
 
     void finishPumpingAllowanceUpdate(byte[] buffer){

@@ -64,6 +64,9 @@ public class CalcTerminal extends JPanel implements ActionListener {
     private static final byte INST_PUMPING_AUTH        = 'q';
     private static final byte INST_PUMPING_FINISH      = 'r';
 
+    private static final int RSA_TYPE = 1024;
+    private static final int RSA_BLOCKSIZE = 128; //128 bij 1024
+
     private Random rng;
 
     RSAPrivateKey globalPrivateKey;
@@ -84,15 +87,12 @@ public class CalcTerminal extends JPanel implements ActionListener {
         Security.addProvider(new BouncyCastleProvider());
         rng = new Random();
         System.out.println("Live");
-        // Provider providers[] = Security.getProviders();
-        // System.out.println(providers.length);
-        //
 
         Key privKey;
         try{
           KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA", "BC");
           SecureRandom random = new SecureRandom();
-          generator.initialize(1024, random);
+          generator.initialize(RSA_TYPE, random);
 
           KeyPair pair = generator.generateKeyPair();
           globalPublicKey = (RSAPublicKey) pair.getPublic();
@@ -113,8 +113,6 @@ public class CalcTerminal extends JPanel implements ActionListener {
           System.out.println("serialized key: " + Base64.getEncoder().encodeToString(ser));
           System.out.println("\npublickey : " + Base64.getEncoder().encodeToString(globalPublicKey.getEncoded()));
           System.out.println("public key (deser): " + Base64.getEncoder().encodeToString(deserializeKey(ser,(short)0).getEncoded()));
-
-
 
         // }catch(Exception e){
         //   System.out.println("Failed to construct keys!");
@@ -273,14 +271,6 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
     void setText(ResponseAPDU apdu) {
         byte[] data = apdu.getData();
-        //System.out.println(apdu.toString());
-            //TODO: Hier komen de APDU's uit. Hier dan maar identifiers inlezen?
-
-        System.out.println("\n\n\nRECEIVING APDU:");
-        System.out.println(new String(data));
-        System.out.println(data.length);
-        System.out.println("\n");
-
 
         for(int i = 0; i < data.length; i++)
         {
@@ -295,29 +285,24 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
 
             //Dit is de apdu reader
+            //TODO: Hier komen de APDU's uit. Hier dan maar identifiers inlezen?
+
+            System.out.println("\n\n\nRECEIVING APDU:");
+            System.out.println(new String(data));
+            System.out.println(data.length);
+            System.out.println("\n");
+
             if (data[4] == 123){
               System.out.println("public key (deser): " + Base64.getEncoder().encodeToString(deserializeKey(data,(short)5).getEncoded()));
             }
 
-            //Dit is de apdu reader
+            //help
             if (data[4] == 92){
-              //System.out.println("public key (deser): " + Base64.getEncoder().encodeToString(deserializeKey(data,(short)6).getEncoded()));
               try{
                 Cipher decip = Cipher.getInstance("RSA");///ECB/PKCS1PADDING");
                 decip.init(Cipher.DECRYPT_MODE, globalPrivateKey);
 
-                System.out.println("");
-                System.out.println("");
-                System.out.println(data[5]);
-                System.out.println(data[132]);
-
-                byte[] mes = Arrays.copyOfRange(data, 5, 133);
-
-                System.out.println("");
-                System.out.println(mes[0]);
-                System.out.println(mes[127]);
-
-
+                byte[] mes = Arrays.copyOfRange(data, 5, RSA_BLOCKSIZE+5);
                 byte[] input = decip.doFinal(mes);
                 System.out.println("decrypted dingetje : " + new String(input));
               }catch(Exception e){
@@ -475,11 +460,6 @@ public class CalcTerminal extends JPanel implements ActionListener {
             apdu = new CommandAPDU(0, ins, 0, 0, ser);
             System.out.println(apdu.toString());
             System.out.println(ser.length);
-            // for(int i = 0; i < ser.length; i++)
-            // {
-            //   System.out.print(ser[i]);
-            //   System.out.print(" ");
-            // }
             break;
           default:
             apdu = new CommandAPDU(0, ins, 0, 0, 42);
