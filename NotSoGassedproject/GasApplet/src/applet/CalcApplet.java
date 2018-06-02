@@ -48,6 +48,7 @@ public class CalcApplet extends Applet implements ISO7816 {
 
     private RandomData rng;
     private byte[] cryptoBuffer;
+    private short streamLength;
 
     private short[] xy;
 
@@ -73,7 +74,8 @@ public class CalcApplet extends Applet implements ISO7816 {
         lastKeyWasDigit = JCSystem.makeTransientBooleanArray((short) 1,
                 JCSystem.CLEAR_ON_RESET);
 
-        cryptoBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
+        cryptoBuffer = new byte[RSA_BLOCKSIZE+RSA_BLOCKSIZE];
+        //cryptoBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
         extendedBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
         rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
 
@@ -113,6 +115,23 @@ public class CalcApplet extends Applet implements ISO7816 {
         byte[] buffer = apdu.getBuffer();
         byte ins = buffer[OFFSET_INS]; //Dit is de instructie byte, byte 1.
         short le = -1;
+
+        byte stream_index = buffer[2];
+        byte stream_end = buffer[3];
+
+        if (stream_index < stream_end){ //if still handling an apduStream
+          apdu.setOutgoing();
+
+          short l = (short) (streamLength - (short)(stream_index * RSA_BLOCKSIZE));
+          if (l>RSA_BLOCKSIZE){
+            l = RSA_BLOCKSIZE;
+          }
+
+          apdu.setOutgoingLength(l);
+          apdu.sendBytesLong(extendedBuffer, (short) ((short) stream_index * RSA_BLOCKSIZE), l);
+          return;
+        }
+
         byte input_length = buffer[4]; // byte 4 geeft het aantal bytes aan in de body
         messageLength = (short) 0;
         useLong = false;
@@ -173,14 +192,24 @@ public class CalcApplet extends Applet implements ISO7816 {
       return (short)( ((buffer[offset] & 0xff)<<8) | (buffer[(short)(offset+1)] & 0xff) );
     }
 
-    public short encrypt(short length, PublicKey key, byte[] buffer, short offset){
-      cardCipher.init(key, Cipher.MODE_ENCRYPT);
-      return cardCipher.doFinal(cryptoBuffer, (short) 0, length, buffer, offset);
+    public short encrypt_double(short length, PublicKey key, byte[] buffer, short offset){
+      short l = encrypt((short) 100, key, buffer, (short) 0, offset);
+      return (short) (l + encrypt((short) (length-(short) 100), key, buffer, (short) 100, (short) (offset + RSA_BLOCKSIZE)));
     }
 
-    public void decrypt(short length){
+    public short encrypt(short length, PublicKey key, byte[] buffer, short cryptoffset, short offset){
+      cardCipher.init(key, Cipher.MODE_ENCRYPT);
+      return cardCipher.doFinal(cryptoBuffer, cryptoffset, length, buffer, offset);
+    }
+
+    public void decrypt_double(short length, short offset){
+      decrypt(RSA_BLOCKSIZE, offset);
+      decrypt((short) (length - RSA_BLOCKSIZE), (short) (offset + (short) 100));
+    }
+
+    public void decrypt(short length, short offset){
       cardCipher.init(cardPrivateKey, Cipher.MODE_DECRYPT);
-      cardCipher.doFinal(cryptoBuffer, (short) 0, length, cryptoBuffer, (short) 0);
+      cardCipher.doFinal(cryptoBuffer, offset, length, cryptoBuffer, offset);
     }
 
     public void sign(short length, byte[] buffer){
@@ -192,6 +221,7 @@ public class CalcApplet extends Applet implements ISO7816 {
     private final short serializeKey(RSAPublicKey key, byte[] buffer, short offset) {
         short expLen = key.getExponent(buffer, (short) (offset + 2));
         Util.setShort(buffer, offset, expLen);
+        short modLen = key.getModulus(buffer, (short)(expLen + (short) (offset + 4)));
         Util.setShort(buffer, (short) (offset + (short) ((short) 2 + expLen)), RSA_BLOCKSIZE);
         return (short) (4 + expLen + RSA_BLOCKSIZE);
     }
@@ -267,9 +297,43 @@ public class CalcApplet extends Applet implements ISO7816 {
         //TODO: pak de encrypt uit
 
 
-        buffer[4] = 42;
+        // buffer[4] = 42;
+        //
+        // messageLength = (short) 5;
+        buffer[4] = 92;
+        RSAPublicKey globalPublicKey = deserializeKey(buffer, (short) 5);
+        buffer[0] = 0;
+        buffer[1] = 0;
+        buffer[2] = 0;
+        buffer[3] = 0;
 
-        messageLength = (short) 5;
+        cryptoBuffer[0] = 'h';
+        cryptoBuffer[1] = 'e';
+        cryptoBuffer[2] = 'l';
+        cryptoBuffer[3] = 'p';
+        cryptoBuffer[4] = ' ';
+        cryptoBuffer[5] = 'm';
+        cryptoBuffer[6] = 'i';
+        cryptoBuffer[7] = 'j';
+        cryptoBuffer[8] = ' ';
+        cryptoBuffer[9] = 'u';
+        cryptoBuffer[10] = 'i';
+        cryptoBuffer[11] = 't';
+        cryptoBuffer[12] = ' ';
+        cryptoBuffer[13] = 'm';
+        cryptoBuffer[14] = 'i';
+        cryptoBuffer[15] = 'j';
+        cryptoBuffer[16] = 'n';
+        cryptoBuffer[17] = ' ';
+        cryptoBuffer[18] = 'l';
+        cryptoBuffer[19] = 'i';
+        cryptoBuffer[20] = 'j';
+        cryptoBuffer[21] = 'd';
+        cryptoBuffer[22] = 'e';
+        cryptoBuffer[23] = 'n';
+        cryptoBuffer[24] = '!';
+        messageLength = (short) ((short) 5 + encrypt((short) 25, globalPublicKey, buffer, (short) 0, (short) 5));
+
     }
 
     ///Pumping Protocol
@@ -310,46 +374,60 @@ public class CalcApplet extends Applet implements ISO7816 {
       //TODO: encrypt een output
       //handleInitialize(buffer);
       // buffer[5] = (byte) 221;
-      buffer[4] = 92;
+      buffer[4] = 100;
       RSAPublicKey globalPublicKey = deserializeKey(buffer, (short) 5);
       buffer[0] = 0;
       buffer[1] = 0;
       buffer[2] = 0;
-      buffer[3] = 0;
+      buffer[3] = 2;
       //buffer[11] = buffer[4];
 
-      //short crypto_l = serializeKey(globalPublicKey, cryptoBuffer, (short) 0);
-      cryptoBuffer[0] = 'h';
-      cryptoBuffer[1] = 'e';
-      cryptoBuffer[2] = 'l';
-      cryptoBuffer[3] = 'p';
-      cryptoBuffer[4] = ' ';
-      cryptoBuffer[5] = 'm';
-      cryptoBuffer[6] = 'i';
-      cryptoBuffer[7] = 'j';
-      cryptoBuffer[8] = ' ';
-      cryptoBuffer[9] = 'u';
-      cryptoBuffer[10] = 'i';
-      cryptoBuffer[11] = 't';
-      cryptoBuffer[12] = ' ';
-      cryptoBuffer[13] = 'm';
-      cryptoBuffer[14] = 'i';
-      cryptoBuffer[15] = 'j';
-      cryptoBuffer[16] = 'n';
-      cryptoBuffer[17] = ' ';
-      cryptoBuffer[18] = 'l';
-      cryptoBuffer[19] = 'i';
-      cryptoBuffer[20] = 'j';
-      cryptoBuffer[21] = 'd';
-      cryptoBuffer[22] = 'e';
-      cryptoBuffer[23] = 'n';
-      cryptoBuffer[24] = '!';
-      //encrypt(crypto_l, globalPublicKey, extendedBuffer, (short) 0);
+      short crypto_l = serializeKey(globalPublicKey, cryptoBuffer, (short) 0);
+      // cryptoBuffer[0] = 'h';
+      // cryptoBuffer[1] = 'e';
+      // cryptoBuffer[2] = 'l';
+      // cryptoBuffer[3] = 'p';
+      // cryptoBuffer[4] = ' ';
+      // cryptoBuffer[5] = 'm';
+      // cryptoBuffer[6] = 'i';
+      // cryptoBuffer[7] = 'j';
+      // cryptoBuffer[8] = ' ';
+      // cryptoBuffer[9] = 'u';
+      // cryptoBuffer[10] = 'i';
+      // cryptoBuffer[11] = 't';
+      // cryptoBuffer[12] = ' ';
+      // cryptoBuffer[13] = 'm';
+      // cryptoBuffer[14] = 'i';
+      // cryptoBuffer[15] = 'j';
+      // cryptoBuffer[16] = 'n';
+      // cryptoBuffer[17] = ' ';
+      // cryptoBuffer[18] = 'l';
+      // cryptoBuffer[19] = 'i';
+      // cryptoBuffer[20] = 'j';
+      // cryptoBuffer[21] = 'd';
+      // cryptoBuffer[22] = 'e';
+      // cryptoBuffer[23] = 'n';
+      // cryptoBuffer[24] = '!';
+      // cryptoBuffer[0] = 'h';
+      // cryptoBuffer[1] = 'e';
+      // cryptoBuffer[2] = 'l';
+      // cryptoBuffer[3] = 'p';
+      // cryptoBuffer[150] = 's';
+      // cryptoBuffer[151] = 'n';
+      // cryptoBuffer[152] = 'e';
+      // cryptoBuffer[153] = 'l';
+      streamLength = encrypt_double(crypto_l, globalPublicKey, extendedBuffer, (short) 0);
+      byte[] b = shortToByteArray(streamLength);
+      buffer[5] = b[0];
+      buffer[6] = b[1];
+      b = shortToByteArray(crypto_l);
+      buffer[7] = b[0];
+      buffer[8] = b[1];
       //useLong = true;
-      //messageLength = (short) 5;
+      messageLength = (short) 9;
       //messageLength = (short) ((short) 5 + encrypt((short) 110, globalPublicKey, extendedBuffer, (short) 5));
-      messageLength = (short) ((short) 5 + encrypt((short) 25, globalPublicKey, buffer, (short) 5));
-      // messageLength = (short) ((short) 5 + encrypt(crypto_l, globalPublicKey, extendedBuffer, (short) 0));
+      //messageLength = (short) ((short) 5 + encrypt((short) 25, globalPublicKey, buffer, (short) 5));
+      //messageLength = (short)((short) ((short) 0 + encrypt_double(crypto_l, globalPublicKey, extendedBuffer, (short) 0)) / (short) 2);
     }
 
     void finishPumpingAllowanceUpdate(byte[] buffer){
