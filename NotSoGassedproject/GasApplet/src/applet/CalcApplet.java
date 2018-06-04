@@ -65,6 +65,9 @@ public class CalcApplet extends Applet implements ISO7816 {
     private short cardIDB;
     private short[] xy;
 
+    private short N1;
+    private short N2;
+
     private short m;
 
     private byte[] lastOp;
@@ -108,7 +111,7 @@ public class CalcApplet extends Applet implements ISO7816 {
 
 
         m = 0;
-        A = (short) 0;
+        A = (short) 42;
         register();
     }
 
@@ -165,14 +168,24 @@ public class CalcApplet extends Applet implements ISO7816 {
             }
             if (incomingApduStreamResolve==INST_INIT_FINISH){
               cardKeyCertificate = new byte[extendedBufferLength];
-              Util.arrayCopy(buffer, (short) 0, extendedBuffer, (short) 0, extendedBufferLength);
+              Util.arrayCopy(extendedBuffer, (short) 0, cardKeyCertificate, (short) 0, extendedBufferLength);
+              Util.arrayCopy(extendedBuffer, (short) 0, cryptoBuffer, (short) 0, extendedBufferLength);
+              decrypt_double(globalPublicKey, extendedBufferLength,(short) 0);
               buffer[0] = 0;
               buffer[1] = 0;
               buffer[2] = 0;
               buffer[3] = 0;
               buffer[4] = 3;
               buffer[5] = 0;
-              messageLength = (short) 6;
+              serializeKey(globalPublicKey, buffer, (short) 6);
+              buffer[12] = cryptoBuffer[0];
+              buffer[13] = cryptoBuffer[1];
+              buffer[14] = cryptoBuffer[2];
+              buffer[15] = cryptoBuffer[3];
+              buffer[16] = cryptoBuffer[4];
+              buffer[17] = cryptoBuffer[5];
+
+              messageLength = (short) 17;
             }
 
           }
@@ -249,24 +262,26 @@ public class CalcApplet extends Applet implements ISO7816 {
       return (short)( ((buffer[offset] & 0xff)<<8) | (buffer[(short)(offset+1)] & 0xff) );
     }
 
-    public short encrypt_double(short length, PublicKey key, byte[] buffer, short offset){
+    public short encrypt_double(short length, Key key, byte[] buffer, short offset){
       short l = encrypt((short) 100, key, buffer, (short) 0, offset);
       return (short) (l + encrypt((short) (length-(short) 100), key, buffer, (short) 100, (short) (offset + RSA_BLOCKSIZE)));
     }
 
-    public short encrypt(short length, PublicKey key, byte[] buffer, short cryptoffset, short offset){
+    public short encrypt(short length, Key key, byte[] buffer, short cryptoffset, short offset){
       cardCipher.init(key, Cipher.MODE_ENCRYPT);
       return cardCipher.doFinal(cryptoBuffer, cryptoffset, length, buffer, offset);
     }
 
-    public void decrypt_double(short length, short offset){
-      decrypt(RSA_BLOCKSIZE, offset);
-      decrypt((short) (length - RSA_BLOCKSIZE), (short) (offset + (short) 100));
+    public short decrypt_double(Key key, short length, short offset){
+      short a = decrypt(key, RSA_BLOCKSIZE, offset);
+      short b = decrypt(key, RSA_BLOCKSIZE, (short) (offset + RSA_BLOCKSIZE));
+      Util.arrayCopy(cryptoBuffer, RSA_BLOCKSIZE, cryptoBuffer, a, b);
+      return (short) (a+b);
     }
 
-    public void decrypt(short length, short offset){
-      cardCipher.init(cardPrivateKey, Cipher.MODE_DECRYPT);
-      cardCipher.doFinal(cryptoBuffer, offset, length, cryptoBuffer, offset);
+    public short decrypt(Key key, short length, short offset){
+      cardCipher.init(key, Cipher.MODE_DECRYPT);
+      return cardCipher.doFinal(cryptoBuffer, offset, length, cryptoBuffer, offset);
     }
 
     public void sign(short length, byte[] buffer){
@@ -337,39 +352,38 @@ public class CalcApplet extends Applet implements ISO7816 {
     void handleChargingProtocolRequest(byte[] buffer){
 
         //Handle input: Terminal -> Card: Protocol request, N1
-        short N1 = bufferToShort(buffer, (short) 5);
+        N1 = bufferToShort(buffer, (short) 5);
 
         cryptoBuffer[0] = buffer[5];
         cryptoBuffer[1] = buffer[6];
 
         //Handle output: Card -> Terminal: Card auth response\nN2, A, sign(ID..A..N1..N2, sk(C))
         rng.generateData(buffer, (short) 5, (short) 2);
-        short N2 = bufferToShort(buffer, (short) 5);
+        N2 = bufferToShort(buffer, (short) 5);
         //Byte A
 
         cryptoBuffer[2] = buffer[5];
         cryptoBuffer[3] = buffer[6];
 
-        byte[] x_b = shortToByteArray(A);
+        byte[] x_b = shortToByteArray(ID);
         cryptoBuffer[4] = x_b[0];
         cryptoBuffer[5] = x_b[1];
 
-        x_b = shortToByteArray(ID);
+        x_b = shortToByteArray(A);
         cryptoBuffer[6] = x_b[0];
         cryptoBuffer[7] = x_b[1];
 
-        sign((short) 8, buffer);
+        buffer[0] = 0;
+        buffer[1] = 0;
+        buffer[2] = 0;
+        buffer[3] = 0;
 
-        buffer[7] = cryptoBuffer[0];
-        buffer[8] = cryptoBuffer[1];
-        buffer[9] = cryptoBuffer[2];
-        buffer[10] = cryptoBuffer[3];
-        buffer[11] = cryptoBuffer[4];
-        buffer[12] = cryptoBuffer[5];
-        buffer[13] = cryptoBuffer[6];
-        buffer[14] = cryptoBuffer[7];
+        buffer[4] = 30;
+        //N2 staat al op 5 en 6.
+        buffer[7] = x_b[0];
+        buffer[8] = x_b[1];
 
-        messageLength = (short) 15;
+        messageLength = (short)((short) 9 + encrypt((short) 8, cardPrivateKey, buffer, (short) 0, (short) 9));
     }
 
     void finishChargingProtocol(byte[] buffer){
@@ -421,21 +435,21 @@ public class CalcApplet extends Applet implements ISO7816 {
 
     void handlePumpingProtocolRequest(byte[] buffer){
 
-        //Handle input: Terminal -> Card: Protocol request, N1
-        byte N1 = buffer[5];
-
-        //Handle output: Card -> Terminal: Pump auth request\n ID, N1, N2, pk(c), C(c)
-        //Byte N1
-        byte N2 = (byte) 81; //TODO: deze moet nog random gegenereerd worden
-        //Byte publicKey //TODO: moet een int worden
-        //Byte certificate //TODO: moet een int worden
-
-        //Write output
-        buffer[5] = ID;
-        buffer[6] = N1;
-        buffer[7] = N2;
-        //buffer[8] = publicKey;
-        buffer[9] = certificate;
+        // // //Handle input: Terminal -> Card: Protocol request, N1
+        // // byte N1 = buffer[5];
+        // //
+        // // //Handle output: Card -> Terminal: Pump auth request\n ID, N1, N2, pk(c), C(c)
+        // // //Byte N1
+        // // byte N2 = (byte) 81; //TODO: deze moet nog random gegenereerd worden
+        // // //Byte publicKey //TODO: moet een int worden
+        // // //Byte certificate //TODO: moet een int worden
+        //
+        // //Write output
+        // buffer[5] = ID;
+        // buffer[6] = N1;
+        // buffer[7] = N2;
+        // //buffer[8] = publicKey;
+        // buffer[9] = certificate;
 
         messageLength = (short) 10;
     }

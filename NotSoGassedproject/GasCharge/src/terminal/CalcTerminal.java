@@ -84,6 +84,9 @@ public class CalcTerminal extends JPanel implements ActionListener {
     short cardIDA;
     short cardIDB;
 
+    private short A;
+    private short N2;
+
     static final byte[] CALC_APPLET_AID = { (byte) 0x12, (byte) 0x34,
             (byte) 0x56, (byte) 0x78, (byte) 0x90, (byte) 0xab };
 
@@ -234,6 +237,11 @@ public class CalcTerminal extends JPanel implements ActionListener {
         byte[] data = apdu.getData();
 
         System.out.println("Received apdu!");
+        for(int i = 0; i < data.length; i++)
+            {
+              System.out.print(data[i]);
+              System.out.print(" ");
+            }
 
         if (incomingApduStreamPointer<incomingApduStreamLength){
 
@@ -337,6 +345,30 @@ public class CalcTerminal extends JPanel implements ActionListener {
               }
             }
 
+            if (data[4] == 30){ //Card auth response charging
+                N2 = bufferToShort(data, (short) 5);
+                A = bufferToShort(data, (short) 7);
+                System.out.println("N2");
+                System.out.println(N2);
+                System.out.println("A");
+                System.out.println(A);
+                System.out.println("Exp");
+                System.out.println(cardPublicKey.getPublicExponent());
+                System.out.println("Mod");
+                System.out.println(cardPublicKey.getModulus());
+                try{
+                  byte[] sgn = decrypt(data, cardPublicKey,RSA_BLOCKSIZE,9);
+                  for(int i = 0; i < sgn.length; i++)
+                    {
+                      System.out.print(sgn[i]);
+                      System.out.print(" ");
+                    }
+                  }catch(Exception e){
+                    System.out.println("Failed to obtain signature!");
+                    System.out.println(e);
+                  }
+            }
+
             if (data[4] == 92){
               try{
                 System.out.println(new String(decrypt(data, globalPrivateKey, RSA_BLOCKSIZE,5)));
@@ -382,8 +414,8 @@ public class CalcTerminal extends JPanel implements ActionListener {
     }
 
     byte[] decrypt_double(byte[] data, Key key, int length, int offset) throws Exception{
-      byte[] a = decrypt(data, key, RSA_BLOCKSIZE, (short) 0);
-      byte[] b = decrypt(data, key, RSA_BLOCKSIZE, RSA_BLOCKSIZE);
+      byte[] a = decrypt(data, key, RSA_BLOCKSIZE, offset);
+      byte[] b = decrypt(data, key, RSA_BLOCKSIZE, offset+RSA_BLOCKSIZE);
       byte[] output = new byte[a.length + b.length];
 
       System.arraycopy(a, 0, output, 0, a.length);
@@ -396,13 +428,13 @@ public class CalcTerminal extends JPanel implements ActionListener {
       Cipher decip = Cipher.getInstance("RSA");
       decip.init(Cipher.DECRYPT_MODE, key);
 
-      byte[] mes = Arrays.copyOfRange(data, offset, length+offset);
+      byte[] mes = Arrays.copyOfRange(data, offset, 128+offset);
       return decip.doFinal(mes);
     }
 
     byte[] encrypt_double(byte[] data, Key key, int length, int offset) throws Exception{
-      byte[] a = encrypt(data, key, 100, (short) 0);
-      byte[] b = encrypt(data, key, 100, 100);
+      byte[] a = encrypt(data, key, 100, offset);
+      byte[] b = encrypt(data, key, 100, offset+100);
       byte[] output = new byte[a.length + b.length];
 
       System.arraycopy(a, 0, output, 0, a.length);
