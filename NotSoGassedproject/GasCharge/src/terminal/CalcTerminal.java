@@ -68,10 +68,12 @@ public class CalcTerminal extends JPanel implements ActionListener {
     private static final int RSA_BLOCKSIZE = 128; //128 bij 1024
 
     private Random rng;
+
     private byte[] extendedBuffer;
-    private short apduStreamLeft;
-    private byte apduStreamPointer;
-    private byte apduStreamResolve;
+    private byte incomingApduStreamLength;
+    private byte incomingApduStreamPointer;
+    private byte incomingApduStreamResolve;
+    private short outgoingStreamLength;
 
     RSAPrivateKey globalPrivateKey;
     RSAPublicKey globalPublicKey;
@@ -93,9 +95,9 @@ public class CalcTerminal extends JPanel implements ActionListener {
         System.out.println("Live");
 
         extendedBuffer = new byte[RSA_BLOCKSIZE+RSA_BLOCKSIZE];
-        apduStreamLeft = 0;
-        apduStreamPointer = 99;
-        apduStreamResolve = 0;
+        incomingApduStreamLength = 0;
+        incomingApduStreamPointer = 99;
+        incomingApduStreamResolve = 0;
 
         Key privKey;
         try{
@@ -287,8 +289,15 @@ public class CalcTerminal extends JPanel implements ActionListener {
         System.out.println(data.length);
         System.out.println(apdu.getBytes().length);
 
+        byte[] kekbytes = apdu.getBytes();
 
-        if (apduStreamPointer<2){
+        for(int i = 0; i < kekbytes.length  ; i++)
+        {
+          System.out.print(kekbytes[i]);
+          System.out.print(" ");
+        }
+
+        if (incomingApduStreamPointer<incomingApduStreamLength){
 
           // for(int i = 0; i < data.length  ; i++)
           // {
@@ -297,17 +306,17 @@ public class CalcTerminal extends JPanel implements ActionListener {
           // }
 
           try{
-          System.arraycopy(data, 0, extendedBuffer, (int) apduStreamPointer*(int) RSA_BLOCKSIZE, data.length);
-          apduStreamPointer = (byte) (apduStreamPointer + (byte) 1);
+          System.arraycopy(data, 0, extendedBuffer, (int) incomingApduStreamPointer*(int) RSA_BLOCKSIZE, data.length);
+          incomingApduStreamPointer = (byte) (incomingApduStreamPointer + (byte) 1);
 
-          if (apduStreamPointer<2){
-            CommandAPDU rapdu = new CommandAPDU(0,0,apduStreamPointer,2,0);
+        if (incomingApduStreamPointer<incomingApduStreamLength){
+            CommandAPDU rapdu = new CommandAPDU(0,0,incomingApduStreamPointer,incomingApduStreamLength,0);
             setText(applet.transmit(rapdu));
           }else{
 
-            if (apduStreamResolve==100){
+            if (incomingApduStreamResolve==100){
               System.out.println("Resolved");
-              // for(int i = 0; i < apduStreamLeft; i++)
+              // for(int i = 0; i < incomingApduStreamLength; i++)
               // {
               //   System.out.print(extendedBuffer);
               //   System.out.print(" ");
@@ -324,18 +333,58 @@ public class CalcTerminal extends JPanel implements ActionListener {
           return;
         }
 
-        for(int i = 0; i < data.length; i++)
-        {
-          System.out.print(data[i]);
-          System.out.print(" ");
-        }
-        System.out.println("\n");
         int sw = apdu.getSW();
         if (sw != 0x9000 || data.length < 5) {
             setText(MSG_ERROR);
         } else {
             setText((short) (((data[3] & 0x000000FF) << 8) | (data[4] & 0x000000FF)));
 
+            System.out.println("\n\nHee hallo ik ben een byte");
+            byte outgoingStreamIndex = data[2];
+            byte outgoingStreamEnd = data[3];
+
+            System.out.println(data[2]);
+            System.out.println(data[3]);
+
+            if (outgoingStreamIndex < outgoingStreamEnd){
+
+              short l = (short) (outgoingStreamLength - (short)(outgoingStreamIndex * RSA_BLOCKSIZE));
+              if (l>RSA_BLOCKSIZE){
+                l = RSA_BLOCKSIZE;
+              }
+
+              System.out.println("Length: \n");
+              System.out.println(l);
+              byte[] l_b = shortToByteArray(l);
+              System.out.println(l_b[0]);
+              System.out.println(l_b[1]);
+              System.out.println(bufferToShort(l_b, (short) 0));
+
+              short offset = (short) ((short) outgoingStreamIndex * RSA_BLOCKSIZE);
+              byte[] message = Arrays.copyOfRange(extendedBuffer, offset, offset+l);
+              CommandAPDU rapdu = new CommandAPDU(0,0,l_b[0],l_b[1],message);
+              byte[] abytes = rapdu.getBytes();
+
+              for(int i = 0; i < abytes.length  ; i++)
+              {
+                System.out.print(abytes[i]);
+                System.out.print(" ");
+              }
+              try{
+                System.out.println("Sending stream object");
+                setText(applet.transmit(rapdu));
+              }catch(Exception e){
+                System.out.println(e);
+              }
+              return;
+            }
+
+            for(int i = 0; i < data.length; i++)
+            {
+              System.out.print(data[i]);
+              System.out.print(" ");
+            }
+            System.out.println("\n");
 
             //Dit is de apdu reader
             //TODO: Hier komen de APDU's uit. Hier dan maar identifiers inlezen?
@@ -353,13 +402,12 @@ public class CalcTerminal extends JPanel implements ActionListener {
             if (data[4] == 100){
               try{
                 System.out.println("Opening resolve stream");
-                apduStreamResolve = data[4];
-                apduStreamPointer = 0;
-               apduStreamLeft = bufferToShort(data, (short)5);
-               System.out.println(apduStreamLeft);
-               System.out.println(bufferToShort(data, (short)7));
+                incomingApduStreamResolve = data[4];
+                incomingApduStreamPointer = 0;
+               incomingApduStreamLength = data[5];//bufferToShort(data, (short)5);
+               System.out.println(incomingApduStreamLength);
                System.out.println("Finished reading resolve stream");
-              CommandAPDU rapdu = new CommandAPDU(0,0,0,2,0);
+              CommandAPDU rapdu = new CommandAPDU(0,0,0,incomingApduStreamLength,0);
               System.out.println("Finished building response apdu");
               setText(applet.transmit(rapdu));
               //System.out.println("Sent response");
@@ -542,13 +590,20 @@ public class CalcTerminal extends JPanel implements ActionListener {
             System.out.println(apdu.toString());
             System.out.println(ser.length);
             break;
-          default:
+          case INST_PUMPING_FINISH:
+            String baukesRaw = "The modern cell phone knows almost everything about you, from what you are going to do at what time to what you like and dislike. Alongside this, cell phones are becoming more widespread than ever before.";
+            byte[] baukesBytes = baukesRaw.getBytes();
+            outgoingStreamLength = (short) baukesBytes.length;
+            System.arraycopy(baukesBytes, 0, extendedBuffer, 0, baukesBytes.length);
+            apdu = new CommandAPDU(0, ins, 2, 0, 0);
+            break;
+           default:
             apdu = new CommandAPDU(0, ins, 0, 0, 42);
             break;
         }
 
         try {
-      byte[] data = apdu.getData();
+      byte[] data = apdu.getBytes();
       System.out.println("\n\nSENT APDU:");
       for(int i = 0; i < data.length; i++)
       {

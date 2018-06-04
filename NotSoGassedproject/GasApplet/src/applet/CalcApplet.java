@@ -48,7 +48,12 @@ public class CalcApplet extends Applet implements ISO7816 {
 
     private RandomData rng;
     private byte[] cryptoBuffer;
-    private short streamLength;
+
+    private byte[] extendedBuffer;
+    private byte incomingApduStreamLength;
+    private byte incomingApduStreamPointer;
+    private byte incomingApduStreamResolve;
+    private short outgoingStreamLength;
 
     private short[] xy;
 
@@ -62,10 +67,6 @@ public class CalcApplet extends Applet implements ISO7816 {
 
     private short A;
 
-    private boolean useLong;
-
-    private byte[] extendedBuffer;
-
     public CalcApplet() {
         xy = JCSystem.makeTransientShortArray((short) 2,
                 JCSystem.CLEAR_ON_RESET);
@@ -73,6 +74,11 @@ public class CalcApplet extends Applet implements ISO7816 {
                 JCSystem.CLEAR_ON_RESET);
         lastKeyWasDigit = JCSystem.makeTransientBooleanArray((short) 1,
                 JCSystem.CLEAR_ON_RESET);
+
+        incomingApduStreamLength = 0;
+        incomingApduStreamPointer = 99;
+        incomingApduStreamResolve = 0;
+
 
         cryptoBuffer = new byte[RSA_BLOCKSIZE+RSA_BLOCKSIZE];
         //cryptoBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
@@ -115,31 +121,59 @@ public class CalcApplet extends Applet implements ISO7816 {
         byte[] buffer = apdu.getBuffer();
         byte ins = buffer[OFFSET_INS]; //Dit is de instructie byte, byte 1.
         short le = -1;
-
-        byte stream_index = buffer[2];
-        byte stream_end = buffer[3];
-
-        if (stream_index < stream_end){ //if still handling an apduStream
-          apdu.setOutgoing();
-
-          short l = (short) (streamLength - (short)(stream_index * RSA_BLOCKSIZE));
-          if (l>RSA_BLOCKSIZE){
-            l = RSA_BLOCKSIZE;
-          }
-
-          apdu.setOutgoingLength(l);
-          apdu.sendBytesLong(extendedBuffer, (short) ((short) stream_index * RSA_BLOCKSIZE), l);
-          return;
-        }
-
-        byte input_length = buffer[4]; // byte 4 geeft het aantal bytes aan in de body
+        //byte input_length = buffer[4]; // byte 4 geeft het aantal bytes aan in de body
         messageLength = (short) 0;
-        useLong = false;
 
         /* Ignore the APDU that selects this applet... */
         if (selectingApplet()) {
             return;
         }
+
+        if (incomingApduStreamPointer<incomingApduStreamLength){
+          short input_length = bufferToShort(buffer, (short) 2);
+          Util.arrayCopy(buffer, (short) 5, extendedBuffer, (short)((short) incomingApduStreamPointer*(short) RSA_BLOCKSIZE), input_length);
+          incomingApduStreamPointer = (byte) (incomingApduStreamPointer + (byte) 1);
+
+        if (incomingApduStreamPointer<incomingApduStreamLength){
+            buffer[0] = 0;
+            buffer[1] = 0;
+            buffer[2] = incomingApduStreamPointer;
+            buffer[3] = incomingApduStreamLength;
+            buffer[4] = 0;
+            buffer[5] = 0;
+            messageLength = (short) 6;
+          }else{
+
+            if (incomingApduStreamResolve==INST_PUMPING_FINISH){
+                buffer[0] = 7;
+                buffer[1] = 8;
+                buffer[2] = 9;
+                buffer[3] = 8;
+                buffer[4] = 7;
+                buffer[5] = 3;
+                messageLength = (short) 6;
+            }
+
+          }
+        }else{
+
+
+        byte outgoingStreamIndex = buffer[2];
+        byte outgoingStreamEnd = buffer[3];
+
+        if (outgoingStreamIndex < outgoingStreamEnd){ //if still handling an apduStream
+          apdu.setOutgoing();
+
+          short l = (short) (outgoingStreamLength - (short)(outgoingStreamIndex * RSA_BLOCKSIZE));
+          if (l>RSA_BLOCKSIZE){
+            l = RSA_BLOCKSIZE;
+          }
+
+          apdu.setOutgoingLength(l);
+          apdu.sendBytesLong(extendedBuffer, (short) ((short) outgoingStreamIndex * RSA_BLOCKSIZE), l);
+          return;
+        }
+
 
         switch (ins) {
 
@@ -166,19 +200,18 @@ public class CalcApplet extends Applet implements ISO7816 {
         default:
             ISOException.throwIt(SW_INS_NOT_SUPPORTED);
         }
+        }
+
         le = apdu.setOutgoing();
         if (le < 5) {
             ISOException.throwIt((short) (SW_WRONG_LENGTH | 5));
         }
 
+
         //Deze code zorgt dat het berichtje goed verstuurd wordt. Blijf af!
         //buffer[0] = (m == 0) ? (byte) 0x00 : (byte) 0x01;
         apdu.setOutgoingLength(messageLength);
-        if (useLong){
-          apdu.sendBytesLong(extendedBuffer, (short) 0, messageLength);
-        }else{
-          apdu.sendBytes((short) 0, messageLength);
-        }
+        apdu.sendBytes((short) 0, messageLength);
     }
 
     public byte[] shortToByteArray(short s){
@@ -245,7 +278,6 @@ public class CalcApplet extends Applet implements ISO7816 {
         //Stuur public key terug
 
         buffer[4] = 123;
-        useLong = false;
         short lel = serializeKey(cardPublicKey, buffer, (short) 5);
 
         messageLength = (short)((short) lel+ (short) 5);
@@ -374,57 +406,19 @@ public class CalcApplet extends Applet implements ISO7816 {
       //TODO: encrypt een output
       //handleInitialize(buffer);
       // buffer[5] = (byte) 221;
-      buffer[4] = 100;
-      RSAPublicKey globalPublicKey = deserializeKey(buffer, (short) 5);
       buffer[0] = 0;
       buffer[1] = 0;
       buffer[2] = 0;
-      buffer[3] = 2;
+      buffer[3] = 0;
+      buffer[4] = 100;
+      RSAPublicKey globalPublicKey = deserializeKey(buffer, (short) 5);
       //buffer[11] = buffer[4];
 
       short crypto_l = serializeKey(globalPublicKey, cryptoBuffer, (short) 0);
-      // cryptoBuffer[0] = 'h';
-      // cryptoBuffer[1] = 'e';
-      // cryptoBuffer[2] = 'l';
-      // cryptoBuffer[3] = 'p';
-      // cryptoBuffer[4] = ' ';
-      // cryptoBuffer[5] = 'm';
-      // cryptoBuffer[6] = 'i';
-      // cryptoBuffer[7] = 'j';
-      // cryptoBuffer[8] = ' ';
-      // cryptoBuffer[9] = 'u';
-      // cryptoBuffer[10] = 'i';
-      // cryptoBuffer[11] = 't';
-      // cryptoBuffer[12] = ' ';
-      // cryptoBuffer[13] = 'm';
-      // cryptoBuffer[14] = 'i';
-      // cryptoBuffer[15] = 'j';
-      // cryptoBuffer[16] = 'n';
-      // cryptoBuffer[17] = ' ';
-      // cryptoBuffer[18] = 'l';
-      // cryptoBuffer[19] = 'i';
-      // cryptoBuffer[20] = 'j';
-      // cryptoBuffer[21] = 'd';
-      // cryptoBuffer[22] = 'e';
-      // cryptoBuffer[23] = 'n';
-      // cryptoBuffer[24] = '!';
-      // cryptoBuffer[0] = 'h';
-      // cryptoBuffer[1] = 'e';
-      // cryptoBuffer[2] = 'l';
-      // cryptoBuffer[3] = 'p';
-      // cryptoBuffer[150] = 's';
-      // cryptoBuffer[151] = 'n';
-      // cryptoBuffer[152] = 'e';
-      // cryptoBuffer[153] = 'l';
-      streamLength = encrypt_double(crypto_l, globalPublicKey, extendedBuffer, (short) 0);
-      byte[] b = shortToByteArray(streamLength);
-      buffer[5] = b[0];
-      buffer[6] = b[1];
-      b = shortToByteArray(crypto_l);
-      buffer[7] = b[0];
-      buffer[8] = b[1];
-      //useLong = true;
-      messageLength = (short) 9;
+      outgoingStreamLength = encrypt_double(crypto_l, globalPublicKey, extendedBuffer, (short) 0);
+      byte[] b = shortToByteArray((short)(outgoingStreamLength/RSA_BLOCKSIZE));
+      buffer[5] = b[1];
+      messageLength = (short) 6;
       //messageLength = (short) ((short) 5 + encrypt((short) 110, globalPublicKey, extendedBuffer, (short) 5));
       //messageLength = (short) ((short) 5 + encrypt((short) 25, globalPublicKey, buffer, (short) 5));
       //messageLength = (short)((short) ((short) 0 + encrypt_double(crypto_l, globalPublicKey, extendedBuffer, (short) 0)) / (short) 2);
@@ -436,7 +430,17 @@ public class CalcApplet extends Applet implements ISO7816 {
       //TODO: pak de encrypt uit
 
 
-      buffer[5] = 42;
+      incomingApduStreamResolve = buffer[1];
+      incomingApduStreamPointer = 0;
+      incomingApduStreamLength = buffer[2];
+
+
+      buffer[0] = 0;
+      buffer[1] = 0;
+      buffer[2] = incomingApduStreamPointer;
+      buffer[3] = incomingApduStreamLength;
+      buffer[4] = 0;
+      buffer[5] = 0;
 
       messageLength = (short) 6;
     }
