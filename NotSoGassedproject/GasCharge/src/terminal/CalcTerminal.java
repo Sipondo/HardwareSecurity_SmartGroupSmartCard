@@ -109,64 +109,9 @@ public class CalcTerminal extends JPanel implements ActionListener {
           globalPublicKey = (RSAPublicKey) pair.getPublic();
           globalPrivateKey = (RSAPrivateKey) pair.getPrivate();
 
-          System.out.println("\npublic length:" + globalPublicKey.getEncoded().length);
-          System.out.println("private length:" + globalPrivateKey.getEncoded().length);
-          System.out.println("\npublickey : " + Base64.getEncoder().encodeToString(globalPublicKey.getEncoded()));
-          System.out.println("privatekey : " + Base64.getEncoder().encodeToString(globalPrivateKey.getEncoded()));
-
-          System.out.println("\n\npublic modulus: " + globalPublicKey.getModulus());
-          System.out.println("public exponent: " + globalPublicKey.getPublicExponent());
-          System.out.println("\nprivate modulus: " + globalPrivateKey.getModulus());
-          System.out.println("private exponent: " + globalPrivateKey.getPrivateExponent());
-          System.out.println("\n");
-
           byte[] ser = serializeKey(globalPublicKey);
-          System.out.println("serialized key: " + Base64.getEncoder().encodeToString(ser));
-          System.out.println("\npublickey : " + Base64.getEncoder().encodeToString(globalPublicKey.getEncoded()));
-
-          try{
-
-          }catch(Exception e){
-            System.out.println("public key (deser): " + Base64.getEncoder().encodeToString(deserializeKey(ser,(short)0).getEncoded()));
-          }
-
-        // }catch(Exception e){
-        //   System.out.println("Failed to construct keys!");
-        //   System.out.println(e);
-        // }
-        //
-        // //Encrypt-decrypt test
-        //
-        // try{
-          Cipher cip = Cipher.getInstance("RSA");
-          cip.init(Cipher.ENCRYPT_MODE, globalPublicKey);
-
-          byte[] message = new byte[5];
-          message[0] = 'h';
-          message[1] = 'a';
-          message[2] = 'l';
-          message[3] = 'l';
-          message[4] = 'o';
-
-          byte[] output = cip.doFinal(message);//, 0, 5);
-
-          Cipher decip = Cipher.getInstance("RSA");
-          decip.init(Cipher.DECRYPT_MODE, globalPrivateKey);
-
-          byte[] input = decip.doFinal(output);
-
-          System.out.println("plain hallo : " + new String(message));
-          System.out.println("encrypted hallo : " + new String(output));
-          System.out.println(output.length);
-          for(int i = 0; i < output.length; i++)
-          {
-            System.out.print(output[i]);
-            System.out.print(" ");
-          }
-          System.out.println("decrypted hallo : " + new String(input));
-          System.out.println(input.length);
         }catch(Exception e){
-          System.out.println("Failed to construct cipher!");
+          System.out.println("Failed to construct crypto!");
           System.out.println(e);
         }
 
@@ -220,10 +165,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
         byte[] modulusBytes = bigIntFixer(modulus);
 
         short expLen = (short) exponentBytes.length;
-        System.out.println("\n\nHey hallo!");
-        System.out.println(expLen);
         short modLen = (short) modulusBytes.length;
-        System.out.println(modLen);
 
         byte[] buffer = new byte[expLen+modLen+4];
         byte[] b;
@@ -285,20 +227,6 @@ public class CalcTerminal extends JPanel implements ActionListener {
     void setText(ResponseAPDU apdu) {
         byte[] data = apdu.getData();
 
-
-        System.out.println("\n\n\nRECEIVING APDU:");
-        System.out.println(new String(data));
-        System.out.println(data.length);
-        System.out.println(apdu.getBytes().length);
-
-        byte[] kekbytes = apdu.getBytes();
-
-        for(int i = 0; i < kekbytes.length  ; i++)
-        {
-          System.out.print(kekbytes[i]);
-          System.out.print(" ");
-        }
-
         if (incomingApduStreamPointer<incomingApduStreamLength){
 
           try{
@@ -312,7 +240,6 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
             if (incomingApduStreamResolve==100){
               System.out.println("Resolved");
-              System.out.println("extendedBuffer: " + Base64.getEncoder().encodeToString(extendedBuffer));
               byte[] result = decrypt_double(extendedBuffer,120,0); //TODO: length
               System.out.println("decryptedBuffer: " + Base64.getEncoder().encodeToString(result));
             }
@@ -352,11 +279,6 @@ public class CalcTerminal extends JPanel implements ActionListener {
               CommandAPDU rapdu = new CommandAPDU(0,0,l_b[0],l_b[1],message);
               byte[] abytes = rapdu.getBytes();
 
-              for(int i = 0; i < abytes.length  ; i++)
-              {
-                System.out.print(abytes[i]);
-                System.out.print(" ");
-              }
               try{
                 System.out.println("Sending stream object");
                 setText(applet.transmit(rapdu));
@@ -365,13 +287,6 @@ public class CalcTerminal extends JPanel implements ActionListener {
               }
               return;
             }
-
-            for(int i = 0; i < data.length; i++)
-            {
-              System.out.print(data[i]);
-              System.out.print(" ");
-            }
-            System.out.println("\n");
 
             //Dit is de apdu reader
             //TODO: Hier komen de APDU's uit. Hier dan maar identifiers inlezen?
@@ -605,8 +520,6 @@ public class CalcTerminal extends JPanel implements ActionListener {
             String baukesRaw = "The modern cell phone knows almost everything about you, from what you are going to do at what time to what you like and dislike. Alongside this, cell phones are becoming more widespread than ever before.";
             byte[] baukesBytes = baukesRaw.getBytes();
             outgoingStreamLength = (short) baukesBytes.length;
-            System.out.println("De lengte van de stream is: ");
-            System.out.println(outgoingStreamLength);
             System.arraycopy(baukesBytes, 0, extendedBuffer, 0, baukesBytes.length);
             apdu = new CommandAPDU(0, ins, 2, 0, shortToByteArray(outgoingStreamLength));
             break;
@@ -617,12 +530,6 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
         try {
       byte[] data = apdu.getBytes();
-      System.out.println("\n\nSENT APDU:");
-      for(int i = 0; i < data.length; i++)
-      {
-        System.out.print(data[i]);
-        System.out.print(" ");
-      }
 			return applet.transmit(apdu);
 		} catch (CardException e) {
 			return null;
