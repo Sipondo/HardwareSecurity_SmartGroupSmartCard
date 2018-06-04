@@ -175,17 +175,17 @@ public class CalcApplet extends Applet implements ISO7816 {
               buffer[1] = 0;
               buffer[2] = 0;
               buffer[3] = 0;
-              buffer[4] = 3;
+              buffer[4] = 11;
               buffer[5] = 0;
               serializeKey(globalPublicKey, buffer, (short) 6);
-              buffer[12] = cryptoBuffer[0];
-              buffer[13] = cryptoBuffer[1];
-              buffer[14] = cryptoBuffer[2];
-              buffer[15] = cryptoBuffer[3];
-              buffer[16] = cryptoBuffer[4];
-              buffer[17] = cryptoBuffer[5];
+              // buffer[12] = cryptoBuffer[0];
+              // buffer[13] = cryptoBuffer[1];
+              // buffer[14] = cryptoBuffer[2];
+              // buffer[15] = cryptoBuffer[3];
+              // buffer[16] = cryptoBuffer[4];
+              // buffer[17] = cryptoBuffer[5];
 
-              messageLength = (short) 17;
+              messageLength = (short) 150;
             }
 
           }

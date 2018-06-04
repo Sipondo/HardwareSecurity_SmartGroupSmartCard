@@ -83,6 +83,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
     RSAPublicKey cardPublicKey;
     short cardIDA;
     short cardIDB;
+    Cipher termCipher;
 
     private short A;
     private short N2;
@@ -115,10 +116,22 @@ public class CalcTerminal extends JPanel implements ActionListener {
           generator.initialize(RSA_TYPE, random);
 
           KeyPair pair = generator.generateKeyPair();
+          termCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding", "BC");
           globalPublicKey = (RSAPublicKey) pair.getPublic();
           globalPrivateKey = (RSAPrivateKey) pair.getPrivate();
 
+          System.out.println(globalPublicKey.getPublicExponent());
+          System.out.println(globalPublicKey.getModulus());
           byte[] ser = serializeKey(globalPublicKey);
+          // for(int i = 0; i < ser.length; i++)
+          //     {
+          //       System.out.print(data[i]);
+          //       System.out.print(" ");
+          //     }
+          RSAPublicKey bert = deserializeKey(ser, (short) 0);
+          System.out.println(bert.getPublicExponent());
+          System.out.println(bert.getModulus());
+
         }catch(Exception e){
           System.out.println("Failed to construct crypto!");
           System.out.println(e);
@@ -201,8 +214,8 @@ public class CalcTerminal extends JPanel implements ActionListener {
         byte[] exponentBytes = Arrays.copyOfRange(buffer, offset+2, offset+2+expLen);
         byte[] modulusBytes = Arrays.copyOfRange(buffer, offset+4+expLen, offset+4+modLen+expLen);
 
-        BigInteger exponent = new BigInteger(exponentBytes);
-        BigInteger modulus = new BigInteger(modulusBytes);
+        BigInteger exponent = new BigInteger(1, exponentBytes);
+        BigInteger modulus = new BigInteger(1, modulusBytes);
 
         RSAPublicKeySpec keySpec = new RSAPublicKeySpec(modulus, exponent);
 
@@ -317,6 +330,13 @@ public class CalcTerminal extends JPanel implements ActionListener {
               System.out.println(e);
             }
 
+            if (data[4] == 11){
+              try{
+              RSAPublicKey cKey = deserializeKey(data, (short) 6);
+              System.out.println(cKey.getModulus());
+              System.out.println(globalPublicKey.getModulus());
+            }catch(Exception e){}
+            }
 
             if (data[4] == 10){ //Ontvang init 2
               try{
@@ -333,6 +353,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
                 id[4] = elength[0];
                 id[5] = elength[1];
 
+
                 outgoingStreamLength = (short) encryptedKey.length;
 
                 CommandAPDU rapdu = new CommandAPDU(0,INST_INIT_FINISH,2,0,id);
@@ -346,18 +367,30 @@ public class CalcTerminal extends JPanel implements ActionListener {
             }
 
             if (data[4] == 30){ //Card auth response charging
-                N2 = bufferToShort(data, (short) 5);
-                A = bufferToShort(data, (short) 7);
-                System.out.println("N2");
-                System.out.println(N2);
-                System.out.println("A");
-                System.out.println(A);
+                // N2 = bufferToShort(data, (short) 5);
+                // A = bufferToShort(data, (short) 7);
+                // System.out.println("N2");
+                // System.out.println(N2);
+                // System.out.println("A");
+                // System.out.println(A);
                 System.out.println("Exp");
                 System.out.println(cardPublicKey.getPublicExponent());
                 System.out.println("Mod");
                 System.out.println(cardPublicKey.getModulus());
+                System.out.println("Datal");
+                System.out.println(data.length);
+                System.out.println(apdu.getBytes().length);
+
+                // byte[] dat = Arrays.copyOfRange(data, 19, 147);
+                // System.out.println(dat.length);
+                // for(int i = 0; i < dat.length; i++)
+                //   {
+                //     System.out.print(dat[i]);
+                //     System.out.print(" ");
+                //   }
                 try{
-                  byte[] sgn = decrypt(data, cardPublicKey,RSA_BLOCKSIZE,9);
+                  byte[] sgn = decrypt(data, cardPublicKey,RSA_BLOCKSIZE,0);
+                  System.out.println("Succes!");
                   for(int i = 0; i < sgn.length; i++)
                     {
                       System.out.print(sgn[i]);
@@ -413,9 +446,9 @@ public class CalcTerminal extends JPanel implements ActionListener {
         }
     }
 
-    byte[] decrypt_double(byte[] data, Key key, int length, int offset) throws Exception{
-      byte[] a = decrypt(data, key, RSA_BLOCKSIZE, offset);
-      byte[] b = decrypt(data, key, RSA_BLOCKSIZE, offset+RSA_BLOCKSIZE);
+    byte[] decrypt_double(byte[] bArray, Key key, int length, int offset) throws Exception{
+      byte[] a = decrypt(bArray, key, RSA_BLOCKSIZE, offset);
+      byte[] b = decrypt(bArray, key, RSA_BLOCKSIZE, offset+RSA_BLOCKSIZE);
       byte[] output = new byte[a.length + b.length];
 
       System.arraycopy(a, 0, output, 0, a.length);
@@ -424,12 +457,11 @@ public class CalcTerminal extends JPanel implements ActionListener {
       return output;
     }
 
-    byte[] decrypt(byte[] data, Key key, int length, int offset) throws Exception{
-      Cipher decip = Cipher.getInstance("RSA");
-      decip.init(Cipher.DECRYPT_MODE, key);
+    byte[] decrypt(byte[] bArray, Key key, int length, int offset) throws Exception{
+      termCipher.init(Cipher.DECRYPT_MODE, key);
 
-      byte[] mes = Arrays.copyOfRange(data, offset, 128+offset);
-      return decip.doFinal(mes);
+      byte[] mes = Arrays.copyOfRange(bArray, offset, 128+offset);
+      return termCipher.doFinal(mes);
     }
 
     byte[] encrypt_double(byte[] data, Key key, int length, int offset) throws Exception{
@@ -444,11 +476,10 @@ public class CalcTerminal extends JPanel implements ActionListener {
     }
 
     byte[] encrypt(byte[] data, Key key, int length, int offset) throws Exception{
-      Cipher encip = Cipher.getInstance("RSA");
-      encip.init(Cipher.ENCRYPT_MODE, key);
+      termCipher.init(Cipher.ENCRYPT_MODE, key);
 
       byte[] mes = Arrays.copyOfRange(data, offset, length+offset);
-      return encip.doFinal(mes);
+      return termCipher.doFinal(mes);
     }
 
     void setMemory(boolean b) {
