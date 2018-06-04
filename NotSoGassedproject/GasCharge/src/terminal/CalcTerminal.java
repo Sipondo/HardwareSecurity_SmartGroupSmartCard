@@ -123,7 +123,12 @@ public class CalcTerminal extends JPanel implements ActionListener {
           byte[] ser = serializeKey(globalPublicKey);
           System.out.println("serialized key: " + Base64.getEncoder().encodeToString(ser));
           System.out.println("\npublickey : " + Base64.getEncoder().encodeToString(globalPublicKey.getEncoded()));
-          System.out.println("public key (deser): " + Base64.getEncoder().encodeToString(deserializeKey(ser,(short)0).getEncoded()));
+
+          try{
+
+          }catch(Exception e){
+            System.out.println("public key (deser): " + Base64.getEncoder().encodeToString(deserializeKey(ser,(short)0).getEncoded()));
+          }
 
         // }catch(Exception e){
         //   System.out.println("Failed to construct keys!");
@@ -238,7 +243,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
     }
 
     //reads the key from the buffer and stores it inside the key object
-  private final RSAPublicKey deserializeKey(byte[] buffer, short offset) {
+  private final RSAPublicKey deserializeKey(byte[] buffer, short offset) throws Exception {
         short expLen = bufferToShort(buffer, offset);
         short modLen = bufferToShort(buffer, (short) ((short) offset + (short)((short) 2 +expLen)));
 
@@ -249,13 +254,10 @@ public class CalcTerminal extends JPanel implements ActionListener {
         BigInteger modulus = new BigInteger(modulusBytes);
 
         RSAPublicKeySpec keySpec = new RSAPublicKeySpec(modulus, exponent);
-        try{
-          KeyFactory kf = KeyFactory.getInstance("RSA");
-          Key generatePublic = kf.generatePublic(keySpec);
-          return (RSAPublicKey) generatePublic;
-        }catch(Exception e){}
-        System.out.println("KAPOT\nKAPOT\nKAPOT\nKAPOT\nKAPOT\nKAPOT\nKAPOT\nKAPOT\nKAPOT\nKAPOT\n");
-        return globalPublicKey; //anders compiled het niet LOL
+
+        KeyFactory kf = KeyFactory.getInstance("RSA");
+        Key generatePublic = kf.generatePublic(keySpec);
+        return (RSAPublicKey) generatePublic;
     }
 
     void key(String txt) {
@@ -299,12 +301,6 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
         if (incomingApduStreamPointer<incomingApduStreamLength){
 
-          // for(int i = 0; i < data.length  ; i++)
-          // {
-          //   System.out.print(data);
-          //   System.out.print(" ");
-          // }
-
           try{
           System.arraycopy(data, 0, extendedBuffer, (int) incomingApduStreamPointer*(int) RSA_BLOCKSIZE, data.length);
           incomingApduStreamPointer = (byte) (incomingApduStreamPointer + (byte) 1);
@@ -316,13 +312,9 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
             if (incomingApduStreamResolve==100){
               System.out.println("Resolved");
-              // for(int i = 0; i < incomingApduStreamLength; i++)
-              // {
-              //   System.out.print(extendedBuffer);
-              //   System.out.print(" ");
-              // }
               System.out.println("extendedBuffer: " + Base64.getEncoder().encodeToString(extendedBuffer));
-              decrypt_double(extendedBuffer,120,0); //TODO: length
+              byte[] result = decrypt_double(extendedBuffer,120,0); //TODO: length
+              System.out.println("decryptedBuffer: " + Base64.getEncoder().encodeToString(result));
             }
             if (incomingApduStreamResolve==101){
               System.out.println("Resolved");
@@ -343,12 +335,8 @@ public class CalcTerminal extends JPanel implements ActionListener {
         } else {
             setText((short) (((data[3] & 0x000000FF) << 8) | (data[4] & 0x000000FF)));
 
-            System.out.println("\n\nHee hallo ik ben een byte");
             byte outgoingStreamIndex = data[2];
             byte outgoingStreamEnd = data[3];
-
-            System.out.println(data[2]);
-            System.out.println(data[3]);
 
             if (outgoingStreamIndex < outgoingStreamEnd){
 
@@ -357,12 +345,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
                 l = RSA_BLOCKSIZE;
               }
 
-              System.out.println("Length: \n");
-              System.out.println(l);
               byte[] l_b = shortToByteArray(l);
-              System.out.println(l_b[0]);
-              System.out.println(l_b[1]);
-              System.out.println(bufferToShort(l_b, (short) 0));
 
               short offset = (short) ((short) outgoingStreamIndex * RSA_BLOCKSIZE);
               byte[] message = Arrays.copyOfRange(extendedBuffer, offset, offset+l);
@@ -395,13 +378,22 @@ public class CalcTerminal extends JPanel implements ActionListener {
             System.out.println("\nInstruction number:");
             System.out.println(data[4]);
 
-            if (data[4] == 123){
-              System.out.println("public key (deser): " + Base64.getEncoder().encodeToString(deserializeKey(data,(short)5).getEncoded()));
+            try{
+              if (data[4] == 123){
+                System.out.println("public key (deser): " + Base64.getEncoder().encodeToString(deserializeKey(data,(short)5).getEncoded()));
+              }
+            }catch(Exception e){
+              System.out.println(e);
             }
+
 
             //help
             if (data[4] == 92){
-              decrypt(data, RSA_BLOCKSIZE,5);
+              try{
+                System.out.println(new String(decrypt(data, RSA_BLOCKSIZE,5)));
+              }catch(Exception e){
+                System.out.println(e);
+              }
             }
             if (data[4] == 100){
               try{
@@ -441,24 +433,23 @@ public class CalcTerminal extends JPanel implements ActionListener {
         }
     }
 
-    void decrypt_double(byte[] data, int length, int offset){
-      decrypt(data, RSA_BLOCKSIZE, (short) 0);
-      decrypt(data, RSA_BLOCKSIZE, RSA_BLOCKSIZE);
+    byte[] decrypt_double(byte[] data, int length, int offset) throws Exception{
+      byte[] a = decrypt(data, RSA_BLOCKSIZE, (short) 0);
+      byte[] b = decrypt(data, RSA_BLOCKSIZE, RSA_BLOCKSIZE);
+      byte[] output = new byte[a.length + b.length];
+
+      System.arraycopy(a, 0, output, 0, a.length);
+      System.arraycopy(b, 0, output, a.length, b.length);
+
+      return output;
     }
 
-    void decrypt(byte[] data, int length, int offset){
-      try{
-        Cipher decip = Cipher.getInstance("RSA");///ECB/PKCS1PADDING");
-        decip.init(Cipher.DECRYPT_MODE, globalPrivateKey);
+    byte[] decrypt(byte[] data, int length, int offset) throws Exception{
+      Cipher decip = Cipher.getInstance("RSA");///ECB/PKCS1PADDING");
+      decip.init(Cipher.DECRYPT_MODE, globalPrivateKey);
 
-        byte[] mes = Arrays.copyOfRange(data, offset, length+offset);
-        byte[] input = decip.doFinal(mes);
-        System.out.println("decrypted dingetje : " + new String(input));
-        System.out.println("decript base64: " + Base64.getEncoder().encodeToString(input));
-      }catch(Exception e){
-        System.out.println("Failed to construct cipher!");
-        System.out.println(e);
-      }
+      byte[] mes = Arrays.copyOfRange(data, offset, length+offset);
+      return decip.doFinal(mes);
     }
 
     void setMemory(boolean b) {
