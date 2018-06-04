@@ -324,6 +324,10 @@ public class CalcTerminal extends JPanel implements ActionListener {
               System.out.println("extendedBuffer: " + Base64.getEncoder().encodeToString(extendedBuffer));
               decrypt_double(extendedBuffer,120,0); //TODO: length
             }
+            if (incomingApduStreamResolve==101){
+              System.out.println("Resolved");
+              System.out.println(new String(extendedBuffer));
+            }
 
           }
           } catch (Exception e) {
@@ -402,6 +406,22 @@ public class CalcTerminal extends JPanel implements ActionListener {
             if (data[4] == 100){
               try{
                 System.out.println("Opening resolve stream");
+                incomingApduStreamResolve = data[4];
+                incomingApduStreamPointer = 0;
+               incomingApduStreamLength = data[5];//bufferToShort(data, (short)5);
+               System.out.println(incomingApduStreamLength);
+               System.out.println("Finished reading resolve stream");
+              CommandAPDU rapdu = new CommandAPDU(0,0,0,incomingApduStreamLength,0);
+              System.out.println("Finished building response apdu");
+              setText(applet.transmit(rapdu));
+              //System.out.println("Sent response");
+              } catch (CardException e) {
+                return;
+              }
+            }
+            if (data[4] == 101){
+              try{
+                System.out.println("Opening resolve stream for bounceback");
                 incomingApduStreamResolve = data[4];
                 incomingApduStreamPointer = 0;
                incomingApduStreamLength = data[5];//bufferToShort(data, (short)5);
@@ -594,8 +614,10 @@ public class CalcTerminal extends JPanel implements ActionListener {
             String baukesRaw = "The modern cell phone knows almost everything about you, from what you are going to do at what time to what you like and dislike. Alongside this, cell phones are becoming more widespread than ever before.";
             byte[] baukesBytes = baukesRaw.getBytes();
             outgoingStreamLength = (short) baukesBytes.length;
+            System.out.println("De lengte van de stream is: ");
+            System.out.println(outgoingStreamLength);
             System.arraycopy(baukesBytes, 0, extendedBuffer, 0, baukesBytes.length);
-            apdu = new CommandAPDU(0, ins, 2, 0, 0);
+            apdu = new CommandAPDU(0, ins, 2, 0, shortToByteArray(outgoingStreamLength));
             break;
            default:
             apdu = new CommandAPDU(0, ins, 0, 0, 42);

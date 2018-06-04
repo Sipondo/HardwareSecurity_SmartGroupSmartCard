@@ -145,12 +145,13 @@ public class CalcApplet extends Applet implements ISO7816 {
           }else{
 
             if (incomingApduStreamResolve==INST_PUMPING_FINISH){
-                buffer[0] = 7;
-                buffer[1] = 8;
-                buffer[2] = 9;
-                buffer[3] = 8;
-                buffer[4] = 7;
-                buffer[5] = 3;
+                buffer[0] = 0;
+                buffer[1] = 0;
+                buffer[2] = 0;
+                buffer[3] = 0;
+                buffer[4] = 101;
+                byte[] b = shortToByteArray((short)(outgoingStreamLength/RSA_BLOCKSIZE));
+                buffer[5] = b[1];
                 messageLength = (short) 6;
             }
 
@@ -433,6 +434,7 @@ public class CalcApplet extends Applet implements ISO7816 {
       incomingApduStreamResolve = buffer[1];
       incomingApduStreamPointer = 0;
       incomingApduStreamLength = buffer[2];
+      outgoingStreamLength = bufferToShort(buffer, (short) 5);
 
 
       buffer[0] = 0;
