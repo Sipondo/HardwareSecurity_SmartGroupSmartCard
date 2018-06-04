@@ -26,6 +26,7 @@ import javacardx.crypto.Cipher;
 public class CalcApplet extends Applet implements ISO7816 {
 
     private static final byte INST_INIT                = 'b';
+    private static final byte INST_INIT_FINISH         = 'a';
     private static final byte INST_CHARGING_REQUEST    = 'c';
     private static final byte INST_CHARGING_FINISH     = 'd';
     private static final byte INST_PUMPING_REQUEST     = 'o';
@@ -43,18 +44,25 @@ public class CalcApplet extends Applet implements ISO7816 {
 
     private static RSAPrivateKey cardPrivateKey;
     private static RSAPublicKey cardPublicKey;
+
+    private static RSAPublicKey globalPublicKey;
+
     private static KeyPair cardKeyPair;
     private static Cipher cardCipher;
 
     private RandomData rng;
     private byte[] cryptoBuffer;
+    private byte[] cardKeyCertificate;
 
+    private short extendedBufferLength;
     private byte[] extendedBuffer;
     private byte incomingApduStreamLength;
     private byte incomingApduStreamPointer;
     private byte incomingApduStreamResolve;
     private short outgoingStreamLength;
 
+    private short cardIDA;
+    private short cardIDB;
     private short[] xy;
 
     private short m;
@@ -78,6 +86,7 @@ public class CalcApplet extends Applet implements ISO7816 {
         incomingApduStreamLength = 0;
         incomingApduStreamPointer = 99;
         incomingApduStreamResolve = 0;
+        extendedBufferLength = 0;
 
 
         cryptoBuffer = new byte[RSA_BLOCKSIZE+RSA_BLOCKSIZE];
@@ -154,6 +163,17 @@ public class CalcApplet extends Applet implements ISO7816 {
                 buffer[5] = b[1];
                 messageLength = (short) 6;
             }
+            if (incomingApduStreamResolve==INST_INIT_FINISH){
+              cardKeyCertificate = new byte[extendedBufferLength];
+              Util.arrayCopy(buffer, (short) 0, extendedBuffer, (short) 0, extendedBufferLength);
+              buffer[0] = 0;
+              buffer[1] = 0;
+              buffer[2] = 0;
+              buffer[3] = 0;
+              buffer[4] = 3;
+              buffer[5] = 0;
+              messageLength = (short) 6;
+            }
 
           }
         }else{
@@ -180,6 +200,9 @@ public class CalcApplet extends Applet implements ISO7816 {
 
         case INST_INIT:
             handleInitialize(buffer);
+            break;
+        case INST_INIT_FINISH:
+            finalizeInitialize(buffer);
             break;
         case INST_CHARGING_REQUEST: //Charging protocol actie 1, Protocol Request
             handleChargingProtocolRequest(buffer);
@@ -277,11 +300,36 @@ public class CalcApplet extends Applet implements ISO7816 {
     void handleInitialize(byte[] buffer){
 
         //Stuur public key terug
+        globalPublicKey = deserializeKey(buffer, (short) 5);
+        buffer[0] = 0;
+        buffer[1] = 0;
+        buffer[2] = 0;
+        buffer[3] = 0;
+        buffer[4] = 10;
+        short l = serializeKey(globalPublicKey, buffer, (short) 5);
 
-        buffer[4] = 123;
-        short lel = serializeKey(cardPublicKey, buffer, (short) 5);
+        messageLength = (short)((short) 5 + l);
+    }
 
-        messageLength = (short)((short) lel+ (short) 5);
+    void finalizeInitialize(byte[] buffer){
+
+        //Stuur public key terug
+
+        incomingApduStreamResolve = buffer[1];
+        incomingApduStreamPointer = 0;
+        incomingApduStreamLength = buffer[2];
+        cardIDA = bufferToShort(buffer, (short) 5);
+        cardIDB = bufferToShort(buffer, (short) 7);
+        extendedBufferLength = bufferToShort(buffer, (short) 9);
+
+
+        buffer[0] = 0;
+        buffer[1] = 0;
+        buffer[2] = incomingApduStreamPointer;
+        buffer[3] = incomingApduStreamLength;
+        buffer[4] = 0;
+
+        messageLength = (short) 6;
     }
 
     ///Charging Protocol

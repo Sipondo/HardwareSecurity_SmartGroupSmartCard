@@ -58,6 +58,8 @@ public class CalcTerminal extends JPanel implements ActionListener {
     static final String MSG_DISABLED = " -- insert card --  ";
     static final String MSG_INVALID = " -- invalid card -- ";
 
+    private static final byte INST_INIT                = 'b';
+    private static final byte INST_INIT_FINISH         = 'a';
     private static final byte INST_CHARGING_REQUEST    = 'c'; //Dit zijn de identifiers voor de communicatie. TODO: maak identifiers voor de communicatie terug.
     private static final byte INST_CHARGING_FINISH     = 'd';
     private static final byte INST_PUMPING_REQUEST     = 'o';
@@ -77,6 +79,10 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
     RSAPrivateKey globalPrivateKey;
     RSAPublicKey globalPublicKey;
+
+    RSAPublicKey cardPublicKey;
+    short cardIDA;
+    short cardIDB;
 
     static final byte[] CALC_APPLET_AID = { (byte) 0x12, (byte) 0x34,
             (byte) 0x56, (byte) 0x78, (byte) 0x90, (byte) 0xab };
@@ -132,7 +138,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
         display.setForeground(Color.green);
         add(display, BorderLayout.NORTH);
         keypad = new JPanel(new GridLayout(3, 3));
-        key("b");
+        key("b");//(String) INST_INIT;
         key("c");//(String) INST_CHARGING_REQUEST);
         key("d");//(String) INST_CHARGING_FINISH);
         key("o");//(String) INST_PUMPING_REQUEST);
@@ -227,6 +233,8 @@ public class CalcTerminal extends JPanel implements ActionListener {
     void setText(ResponseAPDU apdu) {
         byte[] data = apdu.getData();
 
+        System.out.println("Received apdu!");
+
         if (incomingApduStreamPointer<incomingApduStreamLength){
 
           try{
@@ -240,7 +248,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
 
             if (incomingApduStreamResolve==100){
               System.out.println("Resolved");
-              byte[] result = decrypt_double(extendedBuffer,120,0); //TODO: length
+              byte[] result = decrypt_double(extendedBuffer,globalPrivateKey,120,0); //TODO: length
               System.out.println("decryptedBuffer: " + Base64.getEncoder().encodeToString(result));
             }
             if (incomingApduStreamResolve==101){
@@ -302,10 +310,36 @@ public class CalcTerminal extends JPanel implements ActionListener {
             }
 
 
-            //help
+            if (data[4] == 10){ //Ontvang init 2
+              try{
+                cardPublicKey = deserializeKey(data, (short) 5);
+                byte[] encryptedKey = encrypt_double(data, globalPrivateKey, data.length-5,5);
+                System.arraycopy(encryptedKey, 0, extendedBuffer, 0, encryptedKey.length);
+
+                byte[] id = new byte[6];
+                id[0] = 1;
+                id[1] = 3;
+                id[2] = 3;
+                id[3] = 7;
+                byte[] elength = shortToByteArray((short)encryptedKey.length);
+                id[4] = elength[0];
+                id[5] = elength[1];
+
+                outgoingStreamLength = (short) encryptedKey.length;
+
+                CommandAPDU rapdu = new CommandAPDU(0,INST_INIT_FINISH,2,0,id);
+                System.out.println("Sent init finalize");
+                setText(applet.transmit(rapdu));
+
+              }catch(Exception e){
+                System.out.println("Failed to obtain card public key!");
+                System.out.println(e);
+              }
+            }
+
             if (data[4] == 92){
               try{
-                System.out.println(new String(decrypt(data, RSA_BLOCKSIZE,5)));
+                System.out.println(new String(decrypt(data, globalPrivateKey, RSA_BLOCKSIZE,5)));
               }catch(Exception e){
                 System.out.println(e);
               }
@@ -343,14 +377,13 @@ public class CalcTerminal extends JPanel implements ActionListener {
               }
             }
 
-
             setMemory(data[0] == 0x01);
         }
     }
 
-    byte[] decrypt_double(byte[] data, int length, int offset) throws Exception{
-      byte[] a = decrypt(data, RSA_BLOCKSIZE, (short) 0);
-      byte[] b = decrypt(data, RSA_BLOCKSIZE, RSA_BLOCKSIZE);
+    byte[] decrypt_double(byte[] data, Key key, int length, int offset) throws Exception{
+      byte[] a = decrypt(data, key, RSA_BLOCKSIZE, (short) 0);
+      byte[] b = decrypt(data, key, RSA_BLOCKSIZE, RSA_BLOCKSIZE);
       byte[] output = new byte[a.length + b.length];
 
       System.arraycopy(a, 0, output, 0, a.length);
@@ -359,12 +392,31 @@ public class CalcTerminal extends JPanel implements ActionListener {
       return output;
     }
 
-    byte[] decrypt(byte[] data, int length, int offset) throws Exception{
-      Cipher decip = Cipher.getInstance("RSA");///ECB/PKCS1PADDING");
-      decip.init(Cipher.DECRYPT_MODE, globalPrivateKey);
+    byte[] decrypt(byte[] data, Key key, int length, int offset) throws Exception{
+      Cipher decip = Cipher.getInstance("RSA");
+      decip.init(Cipher.DECRYPT_MODE, key);
 
       byte[] mes = Arrays.copyOfRange(data, offset, length+offset);
       return decip.doFinal(mes);
+    }
+
+    byte[] encrypt_double(byte[] data, Key key, int length, int offset) throws Exception{
+      byte[] a = encrypt(data, key, 100, (short) 0);
+      byte[] b = encrypt(data, key, 100, 100);
+      byte[] output = new byte[a.length + b.length];
+
+      System.arraycopy(a, 0, output, 0, a.length);
+      System.arraycopy(b, 0, output, a.length, b.length);
+
+      return output;
+    }
+
+    byte[] encrypt(byte[] data, Key key, int length, int offset) throws Exception{
+      Cipher encip = Cipher.getInstance("RSA");
+      encip.init(Cipher.ENCRYPT_MODE, key);
+
+      byte[] mes = Arrays.copyOfRange(data, offset, length+offset);
+      return encip.doFinal(mes);
     }
 
     void setMemory(boolean b) {
@@ -495,6 +547,10 @@ public class CalcTerminal extends JPanel implements ActionListener {
       CommandAPDU apdu;
       byte[] ser;
         switch(ins){
+          case INST_INIT: //stuur de global key
+            ser = serializeKey(globalPublicKey);
+            apdu = new CommandAPDU(0, ins, 0, 0, ser);
+            break;
           case INST_CHARGING_REQUEST:
             byte[] data = shortToByteArray(generateNonce());
 
