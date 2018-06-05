@@ -28,10 +28,12 @@ public class CalcApplet extends Applet implements ISO7816 {
     private static final byte INST_INIT                = 'b';
     private static final byte INST_INIT_FINISH         = 'a';
     private static final byte INST_CHARGING_REQUEST    = 'c';
+    private static final byte INST_CHARGING_REALFIN    = 'z';
     private static final byte INST_CHARGING_FINISH     = 'd';
     private static final byte INST_PUMPING_REQUEST     = 'o';
     private static final byte INST_PUMPING_AUTH        = 'q';
     private static final byte INST_PUMPING_FINISH      = 'r';
+    private static final byte INST_PUMPING_REALSTART   = '1';
 
     private static final byte X = 0;
     private static final byte Y = 1;
@@ -49,6 +51,7 @@ public class CalcApplet extends Applet implements ISO7816 {
 
     private static KeyPair cardKeyPair;
     private static Cipher cardCipher;
+    private static Signature cardSignature;
 
     private RandomData rng;
     private byte[] cryptoBuffer;
@@ -61,8 +64,7 @@ public class CalcApplet extends Applet implements ISO7816 {
     private byte incomingApduStreamResolve;
     private short outgoingStreamLength;
 
-    private short cardIDA;
-    private short cardIDB;
+    private short cardId;
     private short[] xy;
 
     private short N1;
@@ -92,9 +94,9 @@ public class CalcApplet extends Applet implements ISO7816 {
         extendedBufferLength = 0;
 
 
-        cryptoBuffer = new byte[RSA_BLOCKSIZE+RSA_BLOCKSIZE];
-        //cryptoBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
-        extendedBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
+        //cryptoBuffer = new byte[RSA_BLOCKSIZE+RSA_BLOCKSIZE];
+        cryptoBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
+        extendedBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
         rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
 
         try{
@@ -104,6 +106,7 @@ public class CalcApplet extends Applet implements ISO7816 {
           cardPublicKey = (RSAPublicKey) cardKeyPair.getPublic();
 
           cardCipher = Cipher.getInstance(Cipher.ALG_RSA_PKCS1, false);
+          cardSignature = Signature.getInstance(Signature.ALG_RSA_SHA_PKCS1, false);
         } catch (CryptoException e) {
           short reason = e.getReason();
           ISOException.throwIt(reason);
@@ -169,15 +172,15 @@ public class CalcApplet extends Applet implements ISO7816 {
             if (incomingApduStreamResolve==INST_INIT_FINISH){
               cardKeyCertificate = new byte[extendedBufferLength];
               Util.arrayCopy(extendedBuffer, (short) 0, cardKeyCertificate, (short) 0, extendedBufferLength);
-              Util.arrayCopy(extendedBuffer, (short) 0, cryptoBuffer, (short) 0, extendedBufferLength);
-              decrypt_double(globalPublicKey, extendedBufferLength,(short) 0);
+              //Util.arrayCopy(extendedBuffer, (short) 0, cryptoBuffer, (short) 0, extendedBufferLength);
+              //decrypt_double(globalPublicKey, extendedBufferLength,(short) 0);
               buffer[0] = 0;
               buffer[1] = 0;
               buffer[2] = 0;
               buffer[3] = 0;
               buffer[4] = 11;
               buffer[5] = 0;
-              serializeKey(globalPublicKey, buffer, (short) 6);
+              //serializePrivateKey(cardPrivateKey, extendedBuffer, (short) 6);
               // buffer[12] = cryptoBuffer[0];
               // buffer[13] = cryptoBuffer[1];
               // buffer[14] = cryptoBuffer[2];
@@ -185,7 +188,59 @@ public class CalcApplet extends Applet implements ISO7816 {
               // buffer[16] = cryptoBuffer[4];
               // buffer[17] = cryptoBuffer[5];
 
-              messageLength = (short) 150;
+              messageLength = (short) 6;
+            }
+            if (incomingApduStreamResolve==INST_CHARGING_REALFIN){
+              Util.arrayCopy(extendedBuffer, (short) 0, cryptoBuffer, (short) 0, (short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE));
+              decrypt_double(cardPrivateKey, (short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE), (short) 0);
+
+              byte[] plain = new byte[6];
+              plain[0] = cryptoBuffer[0];
+              plain[1] = cryptoBuffer[1];
+
+              byte[] b;
+              b = shortToByteArray(N1);
+              plain[2] = b[0];
+              plain[3] = b[1];
+
+              b = shortToByteArray(N2);
+              plain[4] = b[0];
+              plain[5] = b[1];
+
+              if(verify(globalPublicKey, plain, (short) 6, (short) 0, cryptoBuffer,RSA_BLOCKSIZE, (short) 2)){
+                buffer[4] = 8;
+                A = bufferToShort(cryptoBuffer, (short) 0);
+              }else{
+                buffer[4] = 7;
+              }
+
+              buffer[0] = 0;
+              buffer[1] = 0;
+              buffer[2] = 0;
+              buffer[3] = 0;
+              buffer[5] = 0;
+              messageLength = (short) 6;
+            }
+
+            if (incomingApduStreamResolve==INST_PUMPING_REALSTART){
+              buffer[0] = 0;
+              buffer[1] = 0;
+              buffer[2] = 0;
+              buffer[3] = 0;
+              buffer[4] = 17;
+              buffer[5] = 0;
+
+              messageLength = (short) 6;
+
+              short keyl = (short)((short)(outgoingStreamLength - (short) 2) - RSA_BLOCKSIZE);
+              if (verify(globalPublicKey, extendedBuffer, keyl, (short) 2, extendedBuffer, RSA_BLOCKSIZE, (short)(keyl + (short) 2))){
+                buffer[4] = 18;
+
+                
+
+              }
+
+
             }
 
           }
@@ -223,6 +278,9 @@ public class CalcApplet extends Applet implements ISO7816 {
         case INST_CHARGING_FINISH: //Charging protocol actie 5, Signature and session numbers
             finishChargingProtocol(buffer);
             break;
+        case INST_CHARGING_REALFIN:
+            realFinishUpCharging(buffer);
+            break;
 
         case INST_PUMPING_REQUEST: //Pumping protocol actie 1, Protocol Request
             handlePumpingProtocolRequest(buffer);
@@ -232,6 +290,9 @@ public class CalcApplet extends Applet implements ISO7816 {
             break;
         case INST_PUMPING_FINISH: //Pumping protocol actie 5, Allowance update
             finishPumpingAllowanceUpdate(buffer);
+            break;
+        case INST_PUMPING_REALSTART:
+            reallyStartPumpingProtocol(buffer);
             break;
 
         default:
@@ -284,9 +345,15 @@ public class CalcApplet extends Applet implements ISO7816 {
       return cardCipher.doFinal(cryptoBuffer, offset, length, cryptoBuffer, offset);
     }
 
-    public void sign(short length, byte[] buffer){
-      cardCipher.init(cardPrivateKey, Cipher.MODE_ENCRYPT);
-      cardCipher.doFinal(cryptoBuffer, (short) 0, length, cryptoBuffer, (short) 0);
+    public short sign(short length, byte[] buffer, short cryptoffset, short offset){
+      cardSignature.init(cardPrivateKey, Signature.MODE_SIGN);
+      return cardSignature.sign(cryptoBuffer, cryptoffset, length, buffer, offset);
+    }
+
+    public boolean verify(RSAPublicKey key, byte[] pSource, short pLength, short pOffset, byte[] eSource, short eLength, short eOffset){
+      //cardSignature = Signature.getInstance(Signature.ALG_RSA_SHA_PKCS1, false);
+      cardSignature.init(key, Signature.MODE_VERIFY);
+      return cardSignature.verify(pSource, pOffset, pLength, eSource, eOffset, eLength);
     }
 
     //reads the key object and stores it into the buffer
@@ -321,7 +388,7 @@ public class CalcApplet extends Applet implements ISO7816 {
         buffer[2] = 0;
         buffer[3] = 0;
         buffer[4] = 10;
-        short l = serializeKey(globalPublicKey, buffer, (short) 5);
+        short l = serializeKey(cardPublicKey, buffer, (short) 5);
 
         messageLength = (short)((short) 5 + l);
     }
@@ -333,8 +400,7 @@ public class CalcApplet extends Applet implements ISO7816 {
         incomingApduStreamResolve = buffer[1];
         incomingApduStreamPointer = 0;
         incomingApduStreamLength = buffer[2];
-        cardIDA = bufferToShort(buffer, (short) 5);
-        cardIDB = bufferToShort(buffer, (short) 7);
+        cardId = bufferToShort(buffer, (short) 5);
         extendedBufferLength = bufferToShort(buffer, (short) 9);
 
 
@@ -365,7 +431,7 @@ public class CalcApplet extends Applet implements ISO7816 {
         cryptoBuffer[2] = buffer[5];
         cryptoBuffer[3] = buffer[6];
 
-        byte[] x_b = shortToByteArray(ID);
+        byte[] x_b = shortToByteArray(cardId);
         cryptoBuffer[4] = x_b[0];
         cryptoBuffer[5] = x_b[1];
 
@@ -383,7 +449,8 @@ public class CalcApplet extends Applet implements ISO7816 {
         buffer[7] = x_b[0];
         buffer[8] = x_b[1];
 
-        messageLength = (short)((short) 9 + encrypt((short) 8, cardPrivateKey, buffer, (short) 0, (short) 9));
+        messageLength = (short)((short) 9 + sign((short) 8, buffer, (short) 0, (short) 9));
+        //messageLength = (short)((short) 9 + encrypt((short) 8, cardPrivateKey, buffer, (short) 0, (short) 9));
     }
 
     void finishChargingProtocol(byte[] buffer){
@@ -488,6 +555,50 @@ public class CalcApplet extends Applet implements ISO7816 {
     }
 
     void finishPumpingAllowanceUpdate(byte[] buffer){
+
+      //Handle input: Terminal -> Card: Allowance update\n encrypt(A..N1..N2, pk(c))
+      //TODO: pak de encrypt uit
+
+
+      incomingApduStreamResolve = buffer[1];
+      incomingApduStreamPointer = 0;
+      incomingApduStreamLength = buffer[2];
+      outgoingStreamLength = bufferToShort(buffer, (short) 5);
+
+
+      buffer[0] = 0;
+      buffer[1] = 0;
+      buffer[2] = incomingApduStreamPointer;
+      buffer[3] = incomingApduStreamLength;
+      buffer[4] = 0;
+      buffer[5] = 0;
+
+      messageLength = (short) 6;
+    }
+
+    void realFinishUpCharging(byte[] buffer){
+
+      //Handle input: Terminal -> Card: Allowance update\n encrypt(A..N1..N2, pk(c))
+      //TODO: pak de encrypt uit
+
+
+      incomingApduStreamResolve = buffer[1];
+      incomingApduStreamPointer = 0;
+      incomingApduStreamLength = buffer[2];
+      outgoingStreamLength = bufferToShort(buffer, (short) 5);
+
+
+      buffer[0] = 0;
+      buffer[1] = 0;
+      buffer[2] = incomingApduStreamPointer;
+      buffer[3] = incomingApduStreamLength;
+      buffer[4] = 0;
+      buffer[5] = 0;
+
+      messageLength = (short) 6;
+    }
+
+    void reallyStartPumpingProtocol(byte[] buffer){
 
       //Handle input: Terminal -> Card: Allowance update\n encrypt(A..N1..N2, pk(c))
       //TODO: pak de encrypt uit
