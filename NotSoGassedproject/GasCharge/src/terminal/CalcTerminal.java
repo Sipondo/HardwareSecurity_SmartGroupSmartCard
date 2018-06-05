@@ -399,6 +399,50 @@ void readResponseAPDU(ResponseAPDU apdu) {
         }
 }
 
+public ResponseAPDU startAPDUChain(byte ins) {
+        CommandAPDU apdu;
+        byte[] ser;
+        switch(ins) {
+        case INST_INIT:   //stuur de global key
+                ser = serializeKey(globalPublicKey);
+                apdu = new CommandAPDU(0, ins, 0, 0, ser);
+                break;
+
+        case INST_CHARGING_REQUEST:
+                N1 = generateNonce();
+                byte[] data = shortToByteArray(N1);
+
+                System.out.println("--------------------");
+                System.out.println((short) data[0]);
+                System.out.println((short) data[1]);
+                apdu = new CommandAPDU(0, ins, 0, 0, data);
+                break;
+
+        case INST_PUMPING_REALSTART:
+                byte[] tKeySer = serializeKey(termPublicKey);
+                N1 = generateNonce();
+                byte[] n_b = shortToByteArray(N1);
+                extendedBuffer[0] = n_b[0];
+                extendedBuffer[1] = n_b[1];
+                System.arraycopy(tKeySer, 0, extendedBuffer, 2, tKeySer.length);
+                System.arraycopy(termCertificate, 0, extendedBuffer, 2+tKeySer.length, termCertificate.length);
+                outgoingStreamLength = (short)(2+tKeySer.length+termCertificate.length);
+                System.out.println(outgoingStreamLength);
+                apdu = new CommandAPDU(0, ins, 3, 0, shortToByteArray(outgoingStreamLength));
+                break;
+        default:
+                apdu = new CommandAPDU(0, ins, 0, 0, 0);
+                break;
+        }
+
+        try {
+                byte[] data = apdu.getBytes();
+                return applet.transmit(apdu);
+        } catch (CardException e) {
+                return null;
+        }
+}
+
 void buildGUI(JFrame parent) {
         setLayout(new BorderLayout());
         display = new JTextField(DISPLAY_WIDTH);
@@ -598,7 +642,7 @@ public void run() {
                                                                 if (resp.getSW() != 0x9000) {
                                                                         throw new Exception("Select failed");
                                                                 }
-                                                                readResponseAPDU(sendKey((byte) '='));
+                                                                readResponseAPDU(startAPDUChain((byte) '='));
                                                                 setEnabled(true);
 
                                                                 // Wait for the card to be removed
@@ -659,54 +703,10 @@ public void actionPerformed(ActionEvent ae) {
                         default:
                                 break;
                         }
-                        readResponseAPDU(sendKey((byte) c));
+                        readResponseAPDU(startAPDUChain((byte) c));
                 }
         } catch (Exception e) {
                 System.out.println(MSG_ERROR);
-        }
-}
-
-public ResponseAPDU sendKey(byte ins) {
-        CommandAPDU apdu;
-        byte[] ser;
-        switch(ins) {
-        case INST_INIT:   //stuur de global key
-                ser = serializeKey(globalPublicKey);
-                apdu = new CommandAPDU(0, ins, 0, 0, ser);
-                break;
-
-        case INST_CHARGING_REQUEST:
-                N1 = generateNonce();
-                byte[] data = shortToByteArray(N1);
-
-                System.out.println("--------------------");
-                System.out.println((short) data[0]);
-                System.out.println((short) data[1]);
-                apdu = new CommandAPDU(0, ins, 0, 0, data);
-                break;
-
-        case INST_PUMPING_REALSTART:
-                byte[] tKeySer = serializeKey(termPublicKey);
-                N1 = generateNonce();
-                byte[] n_b = shortToByteArray(N1);
-                extendedBuffer[0] = n_b[0];
-                extendedBuffer[1] = n_b[1];
-                System.arraycopy(tKeySer, 0, extendedBuffer, 2, tKeySer.length);
-                System.arraycopy(termCertificate, 0, extendedBuffer, 2+tKeySer.length, termCertificate.length);
-                outgoingStreamLength = (short)(2+tKeySer.length+termCertificate.length);
-                System.out.println(outgoingStreamLength);
-                apdu = new CommandAPDU(0, ins, 3, 0, shortToByteArray(outgoingStreamLength));
-                break;
-        default:
-                apdu = new CommandAPDU(0, ins, 0, 0, 0);
-                break;
-        }
-
-        try {
-                byte[] data = apdu.getBytes();
-                return applet.transmit(apdu);
-        } catch (CardException e) {
-                return null;
         }
 }
 
