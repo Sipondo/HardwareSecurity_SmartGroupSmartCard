@@ -68,6 +68,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
     private static final byte INST_CHARGING_REALFIN    = 'z';
 
     private static final byte INST_PUMPING_REALSTART   = '1';
+    private static final byte INST_PUMP_FINISH         = '2';
 
     private static final int RSA_TYPE = 1024;
     private static final int RSA_BLOCKSIZE = 128; //128 bij 1024
@@ -138,7 +139,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
           termPublicKey = (RSAPublicKey) pair.getPublic();
           termPrivateKey = (RSAPrivateKey) pair.getPrivate();
 
-          termCertificate = sign(serializeKey(termPublicKey));
+          termCertificate = sign(globalPrivateKey, serializeKey(termPublicKey));
 
 
         }catch(Exception e){
@@ -293,30 +294,49 @@ public class CalcTerminal extends JPanel implements ActionListener {
               short recA = bufferToShort(extendedBuffer,(short)0);
               short recN1 = bufferToShort(extendedBuffer,(short)2);
               short recN2 = bufferToShort(extendedBuffer,(short)4);
-              System.out.println(recA);
-              System.out.println(recN1);
-              System.out.println(recN2);
+
               byte[] recpkC = Arrays.copyOfRange(extendedBuffer, 6, 141);
               byte[] recCert = Arrays.copyOfRange(extendedBuffer, 141, 141+RSA_BLOCKSIZE);
               byte[] recsign = Arrays.copyOfRange(extendedBuffer, 269, 269+RSA_BLOCKSIZE);
-              System.out.println(recpkC);
-              System.out.println(recpkC.length);
-              System.out.println(recCert);
-              System.out.println(recCert.length);
-              System.out.println(recsign);
-              System.out.println(recsign.length);
-              System.out.println(verify(globalPublicKey,recpkC,recCert));
+
+              if (!(verify(globalPublicKey,recpkC,recCert))){
+                return;
+              }
               RSAPublicKey cardKey = deserializeKey(recpkC, (short) 0);
-              // byte[] plainTest = new byte[2];//Arrays.copyOfRange(extendedBuffer,0,269);
-              // plainTest[0] = 1;
-              // plainTest[1] = 1;
-              System.out.println("fine");
+
               byte[] plain = Arrays.copyOfRange(extendedBuffer,0,269);
               System.out.println(plain.length);
-              System.out.println(verify(cardKey,plain,recsign));
+              if (!(verify(cardKey,plain,recsign))){
+                return;
+              }
 
+              System.out.println("fine");
               //apdustream voor A, sign(a, N1, N2)
-              
+              byte[] paUnsigned = new byte[6];
+              byte[] b;
+              A = recA;
+              b = shortToByteArray(recA);
+              paUnsigned[0] = b[0];
+              paUnsigned[1] = b[1];
+              extendedBuffer[0] = b[0];
+              extendedBuffer[1] = b[1];
+
+              b = shortToByteArray(recN1);
+              paUnsigned[2] = b[0];
+              paUnsigned[3] = b[1];
+
+              b = shortToByteArray(recN2);
+              paUnsigned[4] = b[0];
+              paUnsigned[5] = b[1];
+              byte[] paSigned = sign(termPrivateKey, paUnsigned);
+
+              System.arraycopy(paSigned, 0, extendedBuffer, 2, paSigned.length);
+              outgoingStreamLength = (short) (paSigned.length + 2);
+
+              CommandAPDU rapdu = new CommandAPDU(0,INST_PUMP_FINISH,2,0,0);//(byte) (outgoingStreamLength/RSA_BLOCKSIZE));
+              System.out.println("Pump finalize");
+              setText(applet.transmit(rapdu));
+
             }
 
           }
@@ -378,7 +398,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
                 //byte[] encryptedKey = encrypt_double(data, globalPrivateKey, data.length-5,5);
 
                 byte[] plainKey = Arrays.copyOfRange(data, 5, data.length);
-                byte[] encryptedKey = sign(plainKey);
+                byte[] encryptedKey = sign(globalPrivateKey, plainKey);
                 System.arraycopy(encryptedKey, 0, extendedBuffer, 0, encryptedKey.length);
 
                 byte[] id = new byte[6];
@@ -440,7 +460,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
                       newPlain[4] = plain[2];
                       newPlain[5] = plain[3];
 
-                      byte[] newSigned = sign(newPlain);
+                      byte[] newSigned = sign(globalPrivateKey, newPlain);
                       byte[] plainTotal = new byte[newSigned.length+2];
                       plainTotal[0] = newPlain[0];
                       plainTotal[1] = newPlain[1];
@@ -559,8 +579,8 @@ public class CalcTerminal extends JPanel implements ActionListener {
       return termCipher.doFinal(mes);
     }
 
-    private byte[] sign(byte[] plain) throws Exception{
-      termSignature.initSign(globalPrivateKey);
+    private byte[] sign(RSAPrivateKey key, byte[] plain) throws Exception{
+      termSignature.initSign(key);
       termSignature.update(plain, 0, plain.length);
       return termSignature.sign();
     }

@@ -34,6 +34,7 @@ public class CalcApplet extends Applet implements ISO7816 {
     private static final byte INST_PUMPING_AUTH        = 'q';
     private static final byte INST_PUMPING_FINISH      = 'r';
     private static final byte INST_PUMPING_REALSTART   = '1';
+    private static final byte INST_PUMP_FINISH         = '2';
 
     private static final byte X = 0;
     private static final byte Y = 1;
@@ -48,6 +49,7 @@ public class CalcApplet extends Applet implements ISO7816 {
     private static RSAPublicKey cardPublicKey;
 
     private static RSAPublicKey globalPublicKey;
+    private static RSAPublicKey termPublicKey;
 
     private static KeyPair cardKeyPair;
     private static Cipher cardCipher;
@@ -235,6 +237,9 @@ public class CalcApplet extends Applet implements ISO7816 {
               short keyl = (short)((short)(outgoingStreamLength - (short) 2) - RSA_BLOCKSIZE);
               if (verify(globalPublicKey, extendedBuffer, keyl, (short) 2, extendedBuffer, RSA_BLOCKSIZE, (short)(keyl + (short) 2))){
                 buffer[4] = 18;
+
+                termPublicKey = deserializeKey(extendedBuffer, (short) 2);
+
                 N1 = bufferToShort(extendedBuffer, (short) 0);
 
                 rng.generateData(extendedBuffer, (short) 0, (short) 2);
@@ -279,8 +284,35 @@ public class CalcApplet extends Applet implements ISO7816 {
 
 
               }
+            }
+            if (incomingApduStreamResolve==INST_PUMP_FINISH){
+              buffer[0] = 0;
+              buffer[1] = 0;
+              buffer[2] = 0;
+              buffer[3] = 0;
+              buffer[5] = 0;
 
+              byte[] plain = new byte[6];
+              plain[0] = extendedBuffer[0];
+              plain[1] = extendedBuffer[1];
 
+              byte[] b;
+              b = shortToByteArray(N1);
+              plain[2] = b[0];
+              plain[3] = b[1];
+
+              b = shortToByteArray(N2);
+              plain[4] = b[0];
+              plain[5] = b[1];
+
+              if(verify(termPublicKey, plain, (short) 6, (short) 0, extendedBuffer,RSA_BLOCKSIZE, (short) 2)){
+                buffer[4] = 69;
+                A = bufferToShort(extendedBuffer, (short) 0);
+              }else{
+                buffer[4] = 68;
+              }
+
+              messageLength = (short) 6;
             }
 
           }
@@ -333,6 +365,9 @@ public class CalcApplet extends Applet implements ISO7816 {
             break;
         case INST_PUMPING_REALSTART:
             reallyStartPumpingProtocol(buffer);
+            break;
+        case INST_PUMP_FINISH:
+            reallyEndPumping(buffer);
             break;
 
         default:
@@ -648,6 +683,28 @@ public class CalcApplet extends Applet implements ISO7816 {
       incomingApduStreamPointer = 0;
       incomingApduStreamLength = buffer[2];
       outgoingStreamLength = bufferToShort(buffer, (short) 5);
+
+
+      buffer[0] = 0;
+      buffer[1] = 0;
+      buffer[2] = incomingApduStreamPointer;
+      buffer[3] = incomingApduStreamLength;
+      buffer[4] = 0;
+      buffer[5] = 0;
+
+      messageLength = (short) 6;
+    }
+
+    void reallyEndPumping(byte[] buffer){
+
+      //Handle input: Terminal -> Card: Allowance update\n encrypt(A..N1..N2, pk(c))
+      //TODO: pak de encrypt uit
+
+
+      incomingApduStreamResolve = buffer[1];
+      incomingApduStreamPointer = 0;
+      incomingApduStreamLength = buffer[2];
+      //outgoingStreamLength = bufferToShort(buffer, (short) 5);
 
 
       buffer[0] = 0;
