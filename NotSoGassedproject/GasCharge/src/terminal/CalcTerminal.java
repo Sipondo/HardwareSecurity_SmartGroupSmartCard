@@ -114,7 +114,7 @@ public class CalcTerminal extends JPanel implements ActionListener {
         rng = new Random();
         System.out.println("Live");
 
-        extendedBuffer = new byte[RSA_BLOCKSIZE+RSA_BLOCKSIZE+RSA_BLOCKSIZE];
+        extendedBuffer = new byte[RSA_BLOCKSIZE+RSA_BLOCKSIZE+RSA_BLOCKSIZE+RSA_BLOCKSIZE];
         incomingApduStreamLength = 0;
         incomingApduStreamPointer = 99;
         incomingApduStreamResolve = 0;
@@ -261,12 +261,12 @@ public class CalcTerminal extends JPanel implements ActionListener {
     void setText(ResponseAPDU apdu) {
         byte[] data = apdu.getData();
 
-        // System.out.println("Received apdu!");
-        // for(int i = 0; i < data.length; i++)
-        //     {
-        //       System.out.print(data[i]);
-        //       System.out.print(" ");
-        //     }
+        System.out.println("Received apdu!");
+        for(int i = 0; i < data.length; i++)
+            {
+              System.out.print(data[i]);
+              System.out.print(" ");
+            }
 
         if (incomingApduStreamPointer<incomingApduStreamLength){
 
@@ -287,6 +287,36 @@ public class CalcTerminal extends JPanel implements ActionListener {
             if (incomingApduStreamResolve==101){
               System.out.println("Resolved");
               System.out.println(new String(extendedBuffer));
+            }
+            if (incomingApduStreamResolve==18){
+              System.out.println("Resolved");
+              short recA = bufferToShort(extendedBuffer,(short)0);
+              short recN1 = bufferToShort(extendedBuffer,(short)2);
+              short recN2 = bufferToShort(extendedBuffer,(short)4);
+              System.out.println(recA);
+              System.out.println(recN1);
+              System.out.println(recN2);
+              byte[] recpkC = Arrays.copyOfRange(extendedBuffer, 6, 141);
+              byte[] recCert = Arrays.copyOfRange(extendedBuffer, 141, 141+RSA_BLOCKSIZE);
+              byte[] recsign = Arrays.copyOfRange(extendedBuffer, 269, 269+RSA_BLOCKSIZE);
+              System.out.println(recpkC);
+              System.out.println(recpkC.length);
+              System.out.println(recCert);
+              System.out.println(recCert.length);
+              System.out.println(recsign);
+              System.out.println(recsign.length);
+              System.out.println(verify(globalPublicKey,recpkC,recCert));
+              RSAPublicKey cardKey = deserializeKey(recpkC, (short) 0);
+              // byte[] plainTest = new byte[2];//Arrays.copyOfRange(extendedBuffer,0,269);
+              // plainTest[0] = 1;
+              // plainTest[1] = 1;
+              System.out.println("fine");
+              byte[] plain = Arrays.copyOfRange(extendedBuffer,0,269);
+              System.out.println(plain.length);
+              System.out.println(verify(cardKey,plain,recsign));
+
+              //apdustream voor A, sign(a, N1, N2)
+              
             }
 
           }
@@ -436,6 +466,24 @@ public class CalcTerminal extends JPanel implements ActionListener {
                 System.out.println(new String(decrypt(data, globalPrivateKey, RSA_BLOCKSIZE,5)));
               }catch(Exception e){
                 System.out.println(e);
+              }
+            }
+            if (data[4] == 18){
+              try{
+                short testvalue = bufferToShort(data, (short) 6);
+                System.out.println(testvalue);
+                System.out.println("Opening resolve stream for pump");
+                incomingApduStreamResolve = data[4];
+                incomingApduStreamPointer = 0;
+               incomingApduStreamLength = data[5];//bufferToShort(data, (short)5);
+               System.out.println(incomingApduStreamLength);
+               System.out.println("Finished reading resolve stream");
+              CommandAPDU rapdu = new CommandAPDU(0,0,0,incomingApduStreamLength,0);
+              System.out.println("Finished building response apdu");
+              setText(applet.transmit(rapdu));
+              //System.out.println("Sent response");
+              } catch (CardException e) {
+                return;
               }
             }
             if (data[4] == 100){

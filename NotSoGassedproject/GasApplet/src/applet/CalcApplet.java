@@ -95,8 +95,8 @@ public class CalcApplet extends Applet implements ISO7816 {
 
 
         //cryptoBuffer = new byte[RSA_BLOCKSIZE+RSA_BLOCKSIZE];
-        cryptoBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
-        extendedBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
+        cryptoBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
+        extendedBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE+RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
         rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
 
         try{
@@ -235,8 +235,48 @@ public class CalcApplet extends Applet implements ISO7816 {
               short keyl = (short)((short)(outgoingStreamLength - (short) 2) - RSA_BLOCKSIZE);
               if (verify(globalPublicKey, extendedBuffer, keyl, (short) 2, extendedBuffer, RSA_BLOCKSIZE, (short)(keyl + (short) 2))){
                 buffer[4] = 18;
+                N1 = bufferToShort(extendedBuffer, (short) 0);
 
-                
+                rng.generateData(extendedBuffer, (short) 0, (short) 2);
+                N2 = bufferToShort(extendedBuffer, (short) 0);
+
+                outgoingStreamLength = (short) 6;
+
+                byte[] b;
+                b = shortToByteArray(A);
+                extendedBuffer[0] = b[0];
+                extendedBuffer[1] = b[1];
+
+                b = shortToByteArray(N1);
+                extendedBuffer[2] = b[0];
+                extendedBuffer[3] = b[1];
+
+                b = shortToByteArray(N2);
+                extendedBuffer[4] = b[0];
+                extendedBuffer[5] = b[1];
+
+                serializeKey(cardPublicKey, extendedBuffer, outgoingStreamLength);
+                outgoingStreamLength = (short) (outgoingStreamLength + (short) 135);
+
+                Util.arrayCopy(cardKeyCertificate, (short) 0, extendedBuffer, outgoingStreamLength, RSA_BLOCKSIZE);
+
+                outgoingStreamLength = (short) 269;//(short) (outgoingStreamLength + RSA_BLOCKSIZE);
+
+                Util.arrayCopy(extendedBuffer, (short) 0, cryptoBuffer, (short) 0, outgoingStreamLength);
+                //byte[] buftest = new byte[]{1,1};
+                //Util.arrayCopy(buftest, (short) 0, cryptoBuffer, (short) 0, (short) 1);
+                //outgoingStreamLength = (short)(sign((short) 2, extendedBuffer, (short) 0, (short) 1) + outgoingStreamLength);
+                outgoingStreamLength = (short)(sign(outgoingStreamLength, extendedBuffer, (short) 0, outgoingStreamLength) + outgoingStreamLength);
+
+                outgoingStreamLength = (short)(outgoingStreamLength+RSA_BLOCKSIZE);
+                b = shortToByteArray((short)(outgoingStreamLength/RSA_BLOCKSIZE));
+                buffer[5] = b[1];
+
+                b = shortToByteArray(outgoingStreamLength);
+                buffer[6] = b[0];
+                buffer[7] = b[1];
+                messageLength = (short) 8;
+
 
               }
 
