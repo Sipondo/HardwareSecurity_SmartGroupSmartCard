@@ -4,6 +4,7 @@ import com.opencsv.CSVReader;
 import com.opencsv.CSVWriter;
 
 import java.io.*;
+import java.math.BigInteger;
 import java.util.ArrayList;
 
 public class Database {
@@ -25,31 +26,37 @@ public class Database {
         String[] values;
         Card card;
         while ((values = reader.readNext()) != null) {
-            card = new Card(Integer.parseInt(values[0]), Integer.parseInt(values[1]), Integer.parseInt(values[2]));
+            card = new Card(Integer.parseInt(values[0]), Short.parseShort(values[1]), new BigInteger(values[2]), new BigInteger(values[3]), Integer.parseInt(values[4]));
             db.add(card);
-            System.out.println(values[0] + values[1] + values[2]);
         }
         reader.close();
     }
 
-    public void writeCSV(File file, ArrayList<Card> dataset)
-            throws IOException {
+    public void writeCSV() throws IOException {
         CSVWriter writer = new CSVWriter(new FileWriter(file));
-
         String[] values;
-        for (Card card : db) {
-            values = card.format();
+        for (Card c : db) {
+            values = c.format();
             writer.writeNext(values);
         }
-
         writer.close();
     }
 
     public void add(Card card) {
-        db.add(card);
+        if(!db.contains(card)) {
+            db.add(card);
+        }
+        System.out.println("Card already exists in database.");
     }
 
-    public Card getCard(int id) {
-        return db.get(id);
+    public Card getCard(int id)
+    {
+        for(Card c : db) {
+            if (id == c.getId()) {
+                return c;
+            }
+        }
+        System.out.println("Card does not exist in database");
+        return null;
     }
 }
