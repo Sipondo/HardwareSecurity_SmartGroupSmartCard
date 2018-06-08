@@ -32,12 +32,6 @@ private static final byte INST_CHARGING_REALFIN    = 'z';
 private static final byte INST_PUMPING_REALSTART   = '1';
 private static final byte INST_PUMP_FINISH         = '2';
 
-private static final byte X = 0;
-private static final byte Y = 1;
-
-private static final short ID = (short) 42;     //TODO: Deze moeten allemaal groter (shorts?) en specifieker
-private static final byte certificate = 99;
-
 private static final short RSA_TYPE = 1024;
 private static final short RSA_BLOCKSIZE = 128;
 
@@ -63,57 +57,83 @@ private byte incomingApduStreamResolve;
 private short outgoingStreamLength;
 
 private short cardId;
-
 private short N1;
 private short N2;
-
 private short m;
-
-
 private short messageLength;
-
 private short A;
 
+/**
+ * Construct the applet. This constructor is only called once (card installation).
+ */
 public CalcApplet() {
         incomingApduStreamLength = 0;
         incomingApduStreamPointer = 99;
         incomingApduStreamResolve = 0;
         extendedBufferLength = 0;
-
+        m = 0;
+        A = (short) 0;
 
         //cryptoBuffer = new byte[RSA_BLOCKSIZE+RSA_BLOCKSIZE];
         cryptoBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
         extendedBuffer = JCSystem.makeTransientByteArray((short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE+RSA_BLOCKSIZE+RSA_BLOCKSIZE), JCSystem.CLEAR_ON_RESET);
         rng = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
 
-        try{
-                cardKeyPair = new KeyPair(KeyPair.ALG_RSA, RSA_TYPE);
-                cardKeyPair.genKeyPair();
-                cardPrivateKey = (RSAPrivateKey) cardKeyPair.getPrivate();
-                cardPublicKey = (RSAPublicKey) cardKeyPair.getPublic();
+        cryptoConstructor();
 
-                cardCipher = Cipher.getInstance(Cipher.ALG_RSA_PKCS1, false);
-                cardSignature = Signature.getInstance(Signature.ALG_RSA_SHA_PKCS1, false);
-        } catch (CryptoException e) {
-                short reason = e.getReason();
-                ISOException.throwIt(reason);
-        }
-
-
-        m = 0;
-        A = (short) 0;
         register();
 }
 
+/**
+ * Generate a public and a private key on card installation.
+ */
+public void cryptoConstructor(){
+  try{
+          cardKeyPair = new KeyPair(KeyPair.ALG_RSA, RSA_TYPE);
+          cardKeyPair.genKeyPair();
+          cardPrivateKey = (RSAPrivateKey) cardKeyPair.getPrivate();
+          cardPublicKey = (RSAPublicKey) cardKeyPair.getPublic();
+
+          cardCipher = Cipher.getInstance(Cipher.ALG_RSA_PKCS1, false);
+          cardSignature = Signature.getInstance(Signature.ALG_RSA_SHA_PKCS1, false);
+  } catch (CryptoException e) {
+          short reason = e.getReason();
+          ISOException.throwIt(reason);
+  }
+}
+
+/**
+ * Call the class constructor on card installation.
+ * @param  buffer          Passed down, ignored
+ * @param  offset          Passed down, ignored
+ * @param  length          Passed down, ignored
+ * @throws SystemException Installation exception
+ */
 public static void install(byte[] buffer, short offset, byte length)
 throws SystemException {
         new CalcApplet();
 }
 
+/**
+ * Returns selectable. As no variables have to be changed on select this call
+ * will simply return the boolean value true.
+ * @return true
+ */
 public boolean select() {
         return true;
 }
 
+/**
+ * This function resolves collecting the master's extendedBuffer.
+ * This is initiated by an APDU stream request sent from the master.
+ * The function is called within the process function. It
+ * is checked before the actual header is checked as incoming APDU
+ * stream blocks do not contain a header.
+ * @param  apdu          Incoming APDU object
+ * @param  buffer        Buffer module of the APDU object
+ * @throws ISOException  Inappropriate length exception
+ * @throws APDUException Invalid APDU exception
+ */
 public void resolveIncomingAPDUStream(APDU apdu, byte[] buffer) throws ISOException, APDUException {
           byte[] b;
           byte[] plain;
@@ -268,12 +288,23 @@ public void resolveIncomingAPDUStream(APDU apdu, byte[] buffer) throws ISOExcept
           }
 }
 
+/**
+ * This is the main handler for incoming APDU objects.
+ * The master sends a command APDU which is processed in this function.
+ * This function calls the subfunctions resolveIncomingAPDUStream first.
+ * Unlike it's sister function in the terminal, this function does not split
+ * into extra subfunctions for resolving outgoing APDU streams and
+ * other instructions. This is because the java card code is more compact
+ * than the code on the terminal side.
+ * @param  apdu          Incoming command APDU object
+ * @throws ISOException  Inappropriate length exception
+ * @throws APDUException Invalid APDU exception
+ */
 public void process(APDU apdu) throws ISOException, APDUException {
         short numBytes = apdu.setIncomingAndReceive();
         byte[] buffer = apdu.getBuffer();
-        byte ins = buffer[OFFSET_INS]; //Dit is de instructie byte, byte 1.
+        byte ins = buffer[OFFSET_INS];
         short le = -1;
-        //byte input_length = buffer[4]; // byte 4 geeft het aantal bytes aan in de body
         messageLength = (short) 0;
 
         /* Ignore the APDU that selects this applet... */
@@ -306,6 +337,9 @@ public void process(APDU apdu) throws ISOException, APDUException {
                         return;
                 }
 
+                /**
+                 * This is the card's version of resolveRespondAPDU.
+                 */
 
                 switch (ins) {
 
@@ -316,7 +350,7 @@ public void process(APDU apdu) throws ISOException, APDUException {
                         finalizeInitialize(buffer);
                         break;
 
-                case INST_CHARGING_REQUEST: //Charging protocol actie 1, Protocol Request
+                case INST_CHARGING_REQUEST:
                         handleChargingProtocolRequest(buffer);
                         break;
                 case INST_CHARGING_REALFIN:
@@ -344,6 +378,12 @@ public void process(APDU apdu) throws ISOException, APDUException {
         apdu.sendBytes((short) 0, messageLength);
 }
 
+/**
+ * Translates a short to a byte array. Usually utilized for sending
+ * integers to the slave.
+ * @param  s Integer to be translated
+ * @return   Byte[] representation of the integer
+ */
 public byte[] shortToByteArray(short s){
         byte[] b = new byte[2];
         b[0] = (byte)((s >> 8) & 0xff);
@@ -351,20 +391,63 @@ public byte[] shortToByteArray(short s){
         return b;
 }
 
+/**
+ * Translates a byte array into a short. Usually utilized for receiving
+ * integers from the slave.
+ * @param  buffer Buffer that contains the integer in byte representation
+ * @param  offset Offset in previously mentioned buffer
+ * @return        Integer found at the offset in the buffer
+ */
 public short bufferToShort(byte[] buffer, short offset){
         return (short)( ((buffer[offset] & 0xff)<<8) | (buffer[(short)(offset+1)] & 0xff) );
 }
 
+/**
+ * Extension to the encrypt function that can process two blocks instead of one.
+ * This function has not been scaled up to contain a for-loop.
+ * We have abstained from using constructs like for-loop on the javacard for
+ * performance reasons. No protocol or transaction in our design document
+ * requires encrypt or decrypt operations on more than two blocks.
+ * The plaintext is always sourced from the cryptoBuffer.
+ * @param  length    Length of the message
+ * @param  key       Key to encrypt with
+ * @param  buffer    Byte array that is written to
+ * @param  offset    Offset of the destination in the buffer
+ * @return           Encrypted text length
+ */
 public short encrypt_double(short length, Key key, byte[] buffer, short offset){
         short l = encrypt((short) 100, key, buffer, (short) 0, offset);
         return (short) (l + encrypt((short) (length-(short) 100), key, buffer, (short) 100, (short) (offset + RSA_BLOCKSIZE)));
 }
 
+/**
+ * Encrypts plaintext
+ * The plaintext is always sourced from the cryptoBuffer.
+ * @param  length      Length of the message
+ * @param  key         Key to encrypt with
+ * @param  buffer      Byte array that is written to
+ * @param  cryptoffset Offset of the source in the cryptoBuffer
+ * @param  offset      Offset of the destination in the buffer
+ * @return             Encrypted text length
+ */
 public short encrypt(short length, Key key, byte[] buffer, short cryptoffset, short offset){
         cardCipher.init(key, Cipher.MODE_ENCRYPT);
         return cardCipher.doFinal(cryptoBuffer, cryptoffset, length, buffer, offset);
 }
 
+/**
+ * Extension to the decrypt function that can process two blocks instead of one.
+ * This function has not been scaled up to contain a for-loop.
+ * We have abstained from using constructs like for-loop on the javacard for
+ * performance reasons. No protocol or transaction in our design document
+ * requires encrypt or decrypt operations on more than two blocks.
+ * The encrypted text must be in the cryptoBuffer. This function always
+ * outputs into the cryptoBuffer for safety reasons.
+ * @param  key    Key used for decryption
+ * @param  length Length of the message
+ * @param  offset Offset in the cryptoBuffer
+ * @return        Decrypted text length
+ */
 public short decrypt_double(Key key, short length, short offset){
         short a = decrypt(key, RSA_BLOCKSIZE, offset);
         short b = decrypt(key, RSA_BLOCKSIZE, (short) (offset + RSA_BLOCKSIZE));
@@ -372,23 +455,68 @@ public short decrypt_double(Key key, short length, short offset){
         return (short) (a+b);
 }
 
+/**
+ * Decrypts a byte array into plaintext.
+ * The encrypted text must be in the cryptoBuffer. This function always
+ * outputs into the cryptoBuffer for safety reasons.
+ * @param  key    Key used for decryption
+ * @param  length Length of the message
+ * @param  offset Offset in the cryptoBuffer
+ * @return        Decrypted text length
+ */
 public short decrypt(Key key, short length, short offset){
         cardCipher.init(key, Cipher.MODE_DECRYPT);
         return cardCipher.doFinal(cryptoBuffer, offset, length, cryptoBuffer, offset);
 }
 
+/**
+ * Signs given plaintext with the card private key.
+ * The plaintext is always sourced from the cryptoBuffer.
+ * @param  length      Length of the plaintext
+ * @param  buffer      Buffer to write the signature in
+ * @param  cryptoffset Offset of the plaintext in the cryptobuffer
+ * @param  offset      Required offset for the encrypted text
+ * @return             Length of the signature
+ */
 public short sign(short length, byte[] buffer, short cryptoffset, short offset){
         cardSignature.init(cardPrivateKey, Signature.MODE_SIGN);
         return cardSignature.sign(cryptoBuffer, cryptoffset, length, buffer, offset);
 }
 
+/**
+ * Verify given plaintext against given encrypted text.
+ * This is the only crypto operation that does not require the plaintext to be
+ * in the cryptoBuffer. Verification is usually done on information sent from
+ * the terminal. This means that it is more efficient pointing this operation
+ * to the (extended)Buffer and that there are no security risks in doing so.
+ * @param  key     Key used for decryption
+ * @param  pSource Buffer containing the plaintext
+ * @param  pLength Length of the plaintext
+ * @param  pOffset Offset of the plaintext
+ * @param  eSource Buffer containing the encrypted text
+ * @param  eLength Length of the encrypted text
+ * @param  eOffset Offset of the encrypted text
+ * @return         Whether the text match (true) or not
+ */
 public boolean verify(RSAPublicKey key, byte[] pSource, short pLength, short pOffset, byte[] eSource, short eLength, short eOffset){
         //cardSignature = Signature.getInstance(Signature.ALG_RSA_SHA_PKCS1, false);
         cardSignature.init(key, Signature.MODE_VERIFY);
         return cardSignature.verify(pSource, pOffset, pLength, eSource, eOffset, eLength);
 }
 
-//reads the key object and stores it into the buffer
+/**
+ * Translates a key into a byte array under the following map:
+ * [2] [expLen] [2] [modLen]
+ * with the following contents, listed per block from left to right:
+ *  - Length of the exponent in bytes
+ *  - Value of the exponent in bytes
+ *  - Length of the modulus in bytes
+ *  - Value of the exponent in bytes
+ * @param  key    Input public key
+ * @param  buffer Buffer to write the byte array to
+ * @param  offset Offset in said buffer
+ * @return        Length of the byte array
+ */
 private final short serializeKey(RSAPublicKey key, byte[] buffer, short offset) {
         short expLen = key.getExponent(buffer, (short) (offset + 2));
         Util.setShort(buffer, offset, expLen);
@@ -397,7 +525,19 @@ private final short serializeKey(RSAPublicKey key, byte[] buffer, short offset) 
         return (short) (4 + expLen + RSA_BLOCKSIZE);
 }
 
-//reads the key from the buffer and stores it inside the key object
+/**
+ * Translate a byte array into a public key. Closely accompanies the
+ * serializeKey function as it uses the same format:
+ * [2] [expLen] [2] [modLen]
+ * with the following contents, listed per block from left to right:
+ *  - Length of the exponent in bytes
+ *  - Value of the exponent in bytes
+ *  - Length of the modulus in bytes
+ *  - Value of the exponent in bytes
+ * @param  buffer Buffer to source the key from
+ * @param  offset Offset in said buffer
+ * @return        Deserialized public key
+ */
 private final RSAPublicKey deserializeKey(byte[] buffer, short offset) {
         RSAPublicKey key = (RSAPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_PUBLIC, RSA_TYPE, false);
         short expLen = bufferToShort(buffer, offset);
@@ -409,11 +549,12 @@ private final RSAPublicKey deserializeKey(byte[] buffer, short offset) {
         return key;
 }
 
-//initialize
-
+/**
+ * Receiver for the first message of the init protocol
+ * @param buffer APDU data buffer
+ */
 void handleInitialize(byte[] buffer){
 
-        //Stuur public key terug
         globalPublicKey = deserializeKey(buffer, (short) 5);
         buffer[0] = 0;
         buffer[1] = 0;
@@ -425,9 +566,11 @@ void handleInitialize(byte[] buffer){
         messageLength = (short)((short) 5 + l);
 }
 
+/**
+ * Receiver for the final message of the init protocol
+ * @param buffer APDU data buffer
+ */
 void finalizeInitialize(byte[] buffer){
-
-        //Stuur public key terug
 
         incomingApduStreamResolve = buffer[1];
         incomingApduStreamPointer = 0;
@@ -445,20 +588,19 @@ void finalizeInitialize(byte[] buffer){
         messageLength = (short) 6;
 }
 
-///Charging Protocol
-
+/**
+ * Receiver for the first message of the charging protocol
+ * @param buffer APDU data buffer
+ */
 void handleChargingProtocolRequest(byte[] buffer){
 
-        //Handle input: Terminal -> Card: Protocol request, N1
         N1 = bufferToShort(buffer, (short) 5);
 
         cryptoBuffer[0] = buffer[5];
         cryptoBuffer[1] = buffer[6];
 
-        //Handle output: Card -> Terminal: Card auth response\nN2, A, sign(ID..A..N1..N2, sk(C))
         rng.generateData(buffer, (short) 5, (short) 2);
         N2 = bufferToShort(buffer, (short) 5);
-        //Byte A
 
         cryptoBuffer[2] = buffer[5];
         cryptoBuffer[3] = buffer[6];
@@ -477,16 +619,17 @@ void handleChargingProtocolRequest(byte[] buffer){
         buffer[3] = 0;
 
         buffer[4] = 30;
-        //N2 staat al op 5 en 6.
+
         buffer[7] = x_b[0];
         buffer[8] = x_b[1];
 
         messageLength = (short)((short) 9 + sign((short) 8, buffer, (short) 0, (short) 9));
-        //messageLength = (short)((short) 9 + encrypt((short) 8, cardPrivateKey, buffer, (short) 0, (short) 9));
 }
 
-///Pumping Protocol
-
+/**
+ * Receiver for the final message of the charging protocol
+ * @param buffer APDU data buffer
+ */
 void realFinishUpCharging(byte[] buffer){
         incomingApduStreamResolve = buffer[1];
         incomingApduStreamPointer = 0;
@@ -504,11 +647,11 @@ void realFinishUpCharging(byte[] buffer){
         messageLength = (short) 6;
 }
 
+/**
+ * Receiver for the first message of the pumping protocol
+ * @param buffer APDU data buffer
+ */
 void reallyStartPumpingProtocol(byte[] buffer){
-
-        //Handle input: Terminal -> Card: Allowance update\n encrypt(A..N1..N2, pk(c))
-        //TODO: pak de encrypt uit
-
 
         incomingApduStreamResolve = buffer[1];
         incomingApduStreamPointer = 0;
@@ -526,17 +669,15 @@ void reallyStartPumpingProtocol(byte[] buffer){
         messageLength = (short) 6;
 }
 
+/**
+ * Receiver for the final message of the pumping protocol
+ * @param buffer APDU data buffer
+ */
 void reallyEndPumping(byte[] buffer){
-
-        //Handle input: Terminal -> Card: Allowance update\n encrypt(A..N1..N2, pk(c))
-        //TODO: pak de encrypt uit
-
 
         incomingApduStreamResolve = buffer[1];
         incomingApduStreamPointer = 0;
         incomingApduStreamLength = buffer[2];
-        //outgoingStreamLength = bufferToShort(buffer, (short) 5);
-
 
         buffer[0] = 0;
         buffer[1] = 0;
