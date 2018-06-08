@@ -88,18 +88,18 @@ public CalcApplet() {
  * Generate a public and a private key on card installation.
  */
 public void cryptoConstructor(){
-  try{
-          cardKeyPair = new KeyPair(KeyPair.ALG_RSA, RSA_TYPE);
-          cardKeyPair.genKeyPair();
-          cardPrivateKey = (RSAPrivateKey) cardKeyPair.getPrivate();
-          cardPublicKey = (RSAPublicKey) cardKeyPair.getPublic();
+        try{
+                cardKeyPair = new KeyPair(KeyPair.ALG_RSA, RSA_TYPE);
+                cardKeyPair.genKeyPair();
+                cardPrivateKey = (RSAPrivateKey) cardKeyPair.getPrivate();
+                cardPublicKey = (RSAPublicKey) cardKeyPair.getPublic();
 
-          cardCipher = Cipher.getInstance(Cipher.ALG_RSA_PKCS1, false);
-          cardSignature = Signature.getInstance(Signature.ALG_RSA_SHA_PKCS1, false);
-  } catch (CryptoException e) {
-          short reason = e.getReason();
-          ISOException.throwIt(reason);
-  }
+                cardCipher = Cipher.getInstance(Cipher.ALG_RSA_PKCS1, false);
+                cardSignature = Signature.getInstance(Signature.ALG_RSA_SHA_PKCS1, false);
+        } catch (CryptoException e) {
+                short reason = e.getReason();
+                ISOException.throwIt(reason);
+        }
 }
 
 /**
@@ -135,157 +135,157 @@ public boolean select() {
  * @throws APDUException Invalid APDU exception
  */
 public void resolveIncomingAPDUStream(APDU apdu, byte[] buffer) throws ISOException, APDUException {
-          byte[] b;
-          byte[] plain;
+        byte[] b;
+        byte[] plain;
 
-          short input_length = bufferToShort(buffer, (short) 2);
-          Util.arrayCopy(buffer, (short) 5, extendedBuffer, (short)((short) incomingApduStreamPointer*(short) RSA_BLOCKSIZE), input_length);
-          incomingApduStreamPointer = (byte) (incomingApduStreamPointer + (byte) 1);
+        short input_length = bufferToShort(buffer, (short) 2);
+        Util.arrayCopy(buffer, (short) 5, extendedBuffer, (short)((short) incomingApduStreamPointer*(short) RSA_BLOCKSIZE), input_length);
+        incomingApduStreamPointer = (byte) (incomingApduStreamPointer + (byte) 1);
 
-          if (incomingApduStreamPointer<incomingApduStreamLength) {
-                  buffer[0] = 0;
-                  buffer[1] = 0;
-                  buffer[2] = incomingApduStreamPointer;
-                  buffer[3] = incomingApduStreamLength;
-                  buffer[4] = 0;
-                  buffer[5] = 0;
-                  messageLength = (short) 6;
-          }else{
+        if (incomingApduStreamPointer<incomingApduStreamLength) {
+                buffer[0] = 0;
+                buffer[1] = 0;
+                buffer[2] = incomingApduStreamPointer;
+                buffer[3] = incomingApduStreamLength;
+                buffer[4] = 0;
+                buffer[5] = 0;
+                messageLength = (short) 6;
+        }else{
 
-                  switch (incomingApduStreamResolve){
-                    case INST_INIT_FINISH:
-                          cardKeyCertificate = new byte[extendedBufferLength];
-                          Util.arrayCopy(extendedBuffer, (short) 0, cardKeyCertificate, (short) 0, extendedBufferLength);
+                switch (incomingApduStreamResolve) {
+                case INST_INIT_FINISH:
+                        cardKeyCertificate = new byte[extendedBufferLength];
+                        Util.arrayCopy(extendedBuffer, (short) 0, cardKeyCertificate, (short) 0, extendedBufferLength);
 
-                          buffer[0] = 0;
-                          buffer[1] = 0;
-                          buffer[2] = 0;
-                          buffer[3] = 0;
-                          buffer[4] = 11;
-                          buffer[5] = 0;
-
-
-                          messageLength = (short) 6;
-                  break;
-                  case INST_CHARGING_REALFIN:
-                          Util.arrayCopy(extendedBuffer, (short) 0, cryptoBuffer, (short) 0, (short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE));
-                          decrypt_double(cardPrivateKey, (short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE), (short) 0);
-
-                          plain = new byte[6];
-                          plain[0] = cryptoBuffer[0];
-                          plain[1] = cryptoBuffer[1];
-
-                          b = shortToByteArray(N1);
-                          plain[2] = b[0];
-                          plain[3] = b[1];
-
-                          b = shortToByteArray(N2);
-                          plain[4] = b[0];
-                          plain[5] = b[1];
-
-                          if(verify(globalPublicKey, plain, (short) 6, (short) 0, cryptoBuffer,RSA_BLOCKSIZE, (short) 2)) {
-                                  buffer[4] = 8;
-                                  A = bufferToShort(cryptoBuffer, (short) 0);
-                          }else{
-                                  buffer[4] = 7;
-                          }
-
-                          buffer[0] = 0;
-                          buffer[1] = 0;
-                          buffer[2] = 0;
-                          buffer[3] = 0;
-                          buffer[5] = 0;
-                          messageLength = (short) 6;
-                  break;
-                  case INST_PUMPING_REALSTART:
-                          buffer[0] = 0;
-                          buffer[1] = 0;
-                          buffer[2] = 0;
-                          buffer[3] = 0;
-                          buffer[4] = 17;
-                          buffer[5] = 0;
-
-                          messageLength = (short) 6;
-
-                          short keyl = (short)((short)(outgoingStreamLength - (short) 2) - RSA_BLOCKSIZE);
-                          if (verify(globalPublicKey, extendedBuffer, keyl, (short) 2, extendedBuffer, RSA_BLOCKSIZE, (short)(keyl + (short) 2))) {
-                                  buffer[4] = 18;
-
-                                  termPublicKey = deserializeKey(extendedBuffer, (short) 2);
-
-                                  N1 = bufferToShort(extendedBuffer, (short) 0);
-
-                                  rng.generateData(extendedBuffer, (short) 0, (short) 2);
-                                  N2 = bufferToShort(extendedBuffer, (short) 0);
-
-                                  outgoingStreamLength = (short) 6;
-
-                                  b = shortToByteArray(A);
-                                  extendedBuffer[0] = b[0];
-                                  extendedBuffer[1] = b[1];
-
-                                  b = shortToByteArray(N1);
-                                  extendedBuffer[2] = b[0];
-                                  extendedBuffer[3] = b[1];
-
-                                  b = shortToByteArray(N2);
-                                  extendedBuffer[4] = b[0];
-                                  extendedBuffer[5] = b[1];
-
-                                  serializeKey(cardPublicKey, extendedBuffer, outgoingStreamLength);
-                                  outgoingStreamLength = (short) (outgoingStreamLength + (short) 135);
-                                  Util.arrayCopy(cardKeyCertificate, (short) 0, extendedBuffer, outgoingStreamLength, RSA_BLOCKSIZE);
-                                  outgoingStreamLength = (short) 269;
-                                  Util.arrayCopy(extendedBuffer, (short) 0, cryptoBuffer, (short) 0, outgoingStreamLength);
-                                  outgoingStreamLength = (short)(sign(outgoingStreamLength, extendedBuffer, (short) 0, outgoingStreamLength) + outgoingStreamLength);
-
-                                  outgoingStreamLength = (short)(outgoingStreamLength+RSA_BLOCKSIZE);
-                                  b = shortToByteArray((short)(outgoingStreamLength/RSA_BLOCKSIZE));
-                                  buffer[5] = b[1];
-
-                                  b = shortToByteArray(outgoingStreamLength);
-                                  buffer[6] = b[0];
-                                  buffer[7] = b[1];
-
-                                  A = (short) 0;
-
-                                  messageLength = (short) 8;
+                        buffer[0] = 0;
+                        buffer[1] = 0;
+                        buffer[2] = 0;
+                        buffer[3] = 0;
+                        buffer[4] = 11;
+                        buffer[5] = 0;
 
 
-                          }
-                  break;
-                  case INST_PUMP_FINISH:
-                          buffer[0] = 0;
-                          buffer[1] = 0;
-                          buffer[2] = 0;
-                          buffer[3] = 0;
-                          buffer[5] = 0;
+                        messageLength = (short) 6;
+                        break;
+                case INST_CHARGING_REALFIN:
+                        Util.arrayCopy(extendedBuffer, (short) 0, cryptoBuffer, (short) 0, (short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE));
+                        decrypt_double(cardPrivateKey, (short) (RSA_BLOCKSIZE+RSA_BLOCKSIZE), (short) 0);
 
-                          plain = new byte[6];
-                          plain[0] = extendedBuffer[0];
-                          plain[1] = extendedBuffer[1];
+                        plain = new byte[6];
+                        plain[0] = cryptoBuffer[0];
+                        plain[1] = cryptoBuffer[1];
 
-                          b = shortToByteArray(N1);
-                          plain[2] = b[0];
-                          plain[3] = b[1];
+                        b = shortToByteArray(N1);
+                        plain[2] = b[0];
+                        plain[3] = b[1];
 
-                          b = shortToByteArray(N2);
-                          plain[4] = b[0];
-                          plain[5] = b[1];
+                        b = shortToByteArray(N2);
+                        plain[4] = b[0];
+                        plain[5] = b[1];
 
-                          if(verify(termPublicKey, plain, (short) 6, (short) 0, extendedBuffer,RSA_BLOCKSIZE, (short) 2)) {
-                                  buffer[4] = 69;
-                                  A = bufferToShort(extendedBuffer, (short) 0);
-                          }else{
-                                  buffer[4] = 68;
-                          }
+                        if(verify(globalPublicKey, plain, (short) 6, (short) 0, cryptoBuffer,RSA_BLOCKSIZE, (short) 2)) {
+                                buffer[4] = 8;
+                                A = bufferToShort(cryptoBuffer, (short) 0);
+                        }else{
+                                buffer[4] = 7;
+                        }
 
-                          messageLength = (short) 6;
-                  break;
-                  default:
-                  break;
+                        buffer[0] = 0;
+                        buffer[1] = 0;
+                        buffer[2] = 0;
+                        buffer[3] = 0;
+                        buffer[5] = 0;
+                        messageLength = (short) 6;
+                        break;
+                case INST_PUMPING_REALSTART:
+                        buffer[0] = 0;
+                        buffer[1] = 0;
+                        buffer[2] = 0;
+                        buffer[3] = 0;
+                        buffer[4] = 17;
+                        buffer[5] = 0;
+
+                        messageLength = (short) 6;
+
+                        short keyl = (short)((short)(outgoingStreamLength - (short) 2) - RSA_BLOCKSIZE);
+                        if (verify(globalPublicKey, extendedBuffer, keyl, (short) 2, extendedBuffer, RSA_BLOCKSIZE, (short)(keyl + (short) 2))) {
+                                buffer[4] = 18;
+
+                                termPublicKey = deserializeKey(extendedBuffer, (short) 2);
+
+                                N1 = bufferToShort(extendedBuffer, (short) 0);
+
+                                rng.generateData(extendedBuffer, (short) 0, (short) 2);
+                                N2 = bufferToShort(extendedBuffer, (short) 0);
+
+                                outgoingStreamLength = (short) 6;
+
+                                b = shortToByteArray(A);
+                                extendedBuffer[0] = b[0];
+                                extendedBuffer[1] = b[1];
+
+                                b = shortToByteArray(N1);
+                                extendedBuffer[2] = b[0];
+                                extendedBuffer[3] = b[1];
+
+                                b = shortToByteArray(N2);
+                                extendedBuffer[4] = b[0];
+                                extendedBuffer[5] = b[1];
+
+                                serializeKey(cardPublicKey, extendedBuffer, outgoingStreamLength);
+                                outgoingStreamLength = (short) (outgoingStreamLength + (short) 135);
+                                Util.arrayCopy(cardKeyCertificate, (short) 0, extendedBuffer, outgoingStreamLength, RSA_BLOCKSIZE);
+                                outgoingStreamLength = (short) 269;
+                                Util.arrayCopy(extendedBuffer, (short) 0, cryptoBuffer, (short) 0, outgoingStreamLength);
+                                outgoingStreamLength = (short)(sign(outgoingStreamLength, extendedBuffer, (short) 0, outgoingStreamLength) + outgoingStreamLength);
+
+                                outgoingStreamLength = (short)(outgoingStreamLength+RSA_BLOCKSIZE);
+                                b = shortToByteArray((short)(outgoingStreamLength/RSA_BLOCKSIZE));
+                                buffer[5] = b[1];
+
+                                b = shortToByteArray(outgoingStreamLength);
+                                buffer[6] = b[0];
+                                buffer[7] = b[1];
+
+                                A = (short) 0;
+
+                                messageLength = (short) 8;
+
+
+                        }
+                        break;
+                case INST_PUMP_FINISH:
+                        buffer[0] = 0;
+                        buffer[1] = 0;
+                        buffer[2] = 0;
+                        buffer[3] = 0;
+                        buffer[5] = 0;
+
+                        plain = new byte[6];
+                        plain[0] = extendedBuffer[0];
+                        plain[1] = extendedBuffer[1];
+
+                        b = shortToByteArray(N1);
+                        plain[2] = b[0];
+                        plain[3] = b[1];
+
+                        b = shortToByteArray(N2);
+                        plain[4] = b[0];
+                        plain[5] = b[1];
+
+                        if(verify(termPublicKey, plain, (short) 6, (short) 0, extendedBuffer,RSA_BLOCKSIZE, (short) 2)) {
+                                buffer[4] = 69;
+                                A = bufferToShort(extendedBuffer, (short) 0);
+                        }else{
+                                buffer[4] = 68;
+                        }
+
+                        messageLength = (short) 6;
+                        break;
+                default:
+                        break;
                 }
-          }
+        }
 }
 
 /**
@@ -313,14 +313,14 @@ public void process(APDU apdu) throws ISOException, APDUException {
         }
 
         if (incomingApduStreamPointer<incomingApduStreamLength) {
-          resolveIncomingAPDUStream(apdu, buffer);
+                resolveIncomingAPDUStream(apdu, buffer);
         }else{
 
                 /**
-                * This is the card's version of resolveOutgoingAPDUStream
-                * As the size of the code is very limited we opted not to
-                * split it into a seperate function.
-                */
+                 * This is the card's version of resolveOutgoingAPDUStream
+                 * As the size of the code is very limited we opted not to
+                 * split it into a seperate function.
+                 */
                 byte outgoingStreamIndex = buffer[2];
                 byte outgoingStreamEnd = buffer[3];
 

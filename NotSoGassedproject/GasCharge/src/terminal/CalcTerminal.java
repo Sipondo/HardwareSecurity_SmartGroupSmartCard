@@ -174,19 +174,19 @@ public CalcTerminal(JFrame parent) {
                                 System.out.println(e);
                         }
                 }else{
-                  try{
-                          FileInputStream file = new FileInputStream("globalkeys");
-                          //globalPublicKey = deserializeKey(reader.readLine().getBytes(), (short) 0);
-                          byte[] file_contents = new byte[file.available()];
-                          file.read(file_contents);
-                          globalPublicKey = deserializeKey(file_contents, (short) 0);
-                          globalPrivateKey = deserializePrivateKey(file_contents, (short) 135);
-                          file.close();
-                          System.out.println("Successfully read keys from file!");
-                  }catch (IOException e) {
-                          System.out.println("Failed to read global keys!");
-                          System.out.println(e);
-                  }
+                        try{
+                                FileInputStream file = new FileInputStream("globalkeys");
+                                //globalPublicKey = deserializeKey(reader.readLine().getBytes(), (short) 0);
+                                byte[] file_contents = new byte[file.available()];
+                                file.read(file_contents);
+                                globalPublicKey = deserializeKey(file_contents, (short) 0);
+                                globalPrivateKey = deserializePrivateKey(file_contents, (short) 135);
+                                file.close();
+                                System.out.println("Successfully read keys from file!");
+                        }catch (IOException e) {
+                                System.out.println("Failed to read global keys!");
+                                System.out.println(e);
+                        }
                 }
 
                 termCertificate = sign(globalPrivateKey, serializeKey(termPublicKey));
@@ -900,10 +900,10 @@ private boolean verify(RSAPublicKey key, byte[] plain, byte[] encrypted) throws 
 }
 
 /**
-* Keypad builder, Unmodified from source by:
-* @author Martijno
-* @author woj
-* @author Pim Vullers
+ * Keypad builder, Unmodified from source by:
+ * @author Martijno
+ * @author woj
+ * @author Pim Vullers
  * @param b Whether the slave is enabled
  */
 public void setEnabled(boolean b) {
