@@ -348,6 +348,7 @@ void resolveOutgoingAPDUStream(byte[] data){
  *  - Protocol completed confirmations
  *
  * This function is called within readResponseAPDU with lowest priority.
+ * Unrecognized messages are reported and are not processed.
  * @param data The incoming APDU data buffer
  */
 void resolveRespondAPDU(byte[] data){
@@ -467,7 +468,13 @@ void resolveRespondAPDU(byte[] data){
         }
 }
 
-
+/**
+ * This is the main handler for incoming APDU objects.
+ * The slave sends a response APDU which is processed in this function.
+ * This function calls subfunctions resolveIncomingAPDUStream,
+ * resolveOutgoingAPDUStream and resolveRespondAPDU in order of priority.
+ * @param apdu The incoming APDU data buffer
+ */
 void readResponseAPDU(ResponseAPDU apdu) {
         byte[] data = apdu.getData();
         if (incomingApduStreamPointer<incomingApduStreamLength) {
@@ -496,6 +503,15 @@ void readResponseAPDU(ResponseAPDU apdu) {
         }
 }
 
+/**
+ * This function sends an INITIAL command APDU. Not all command APDU posts
+ * are performed via this function; only the request that starts a protocol
+ * as described in the document (APDU chain).
+ * Unrecognized identifiers are sent as "hollow" apdu messages with just their
+ * identifier.
+ * @param  ins Message identifier
+ * @return     The slave's response on the command
+ */
 public ResponseAPDU startAPDUChain(byte ins) {
         CommandAPDU apdu;
         byte[] ser;
@@ -535,23 +551,12 @@ public ResponseAPDU startAPDUChain(byte ins) {
         }
 }
 
-void buildGUI(JFrame parent) {
-        setLayout(new BorderLayout());
-        display = new JTextField(DISPLAY_WIDTH);
-        display.setHorizontalAlignment(JTextField.RIGHT);
-        display.setEditable(false);
-        display.setFont(FONT);
-        display.setBackground(Color.darkGray);
-        display.setForeground(Color.green);
-        add(display, BorderLayout.NORTH);
-        keypad = new JPanel(new GridLayout(3, 1));
-        key(NAME_INIT);
-        key(NAME_CHAR);
-        key(NAME_PUMP);
-        add(keypad, BorderLayout.CENTER);
-        parent.addWindowListener(new CloseEventListener());
-}
-
+/**
+ * Parses a big integer as a byte array. The function
+ * overrides any error that may occur due to the integer's sign.
+ * @param  source Integer to be converted
+ * @return        Bytearray representation of the integer
+ */
 private byte[] bigIntFixer(BigInteger source){
         byte[] array = source.toByteArray();
         if (array[0] == 0) {
@@ -562,7 +567,17 @@ private byte[] bigIntFixer(BigInteger source){
         return array;
 }
 
-//reads the key object and stores it into the buffer
+/**
+ * Translates a key into a byte array under the following map:
+ * [2] [expLen] [2] [modLen]
+ * with the following contents, listed per block from left to right:
+ *  - Length of the exponent in bytes
+ *  - Value of the exponent in bytes
+ *  - Length of the modulus in bytes
+ *  - Value of the exponent in bytes
+ * @param  key Input public key
+ * @return     Byte[] representation of the key
+ */
 private final byte[] serializeKey(RSAPublicKey key) {
         BigInteger exponent = key.getPublicExponent();
         BigInteger modulus = key.getModulus();
@@ -590,7 +605,21 @@ private final byte[] serializeKey(RSAPublicKey key) {
         return buffer;
 }
 
-//reads the key object and stores it into the buffer
+/**
+ * A niche copy of the serializeKey function that handles private keys instead
+ * of public keys.
+ * As private keys are never sent in the protocol this function is solely used
+ * to store private keys on the master's device.
+ * Translates a key into a byte array under the following map:
+ * [2] [expLen] [2] [modLen]
+ * with the following contents, listed per block from left to right:
+ *  - Length of the exponent in bytes
+ *  - Value of the exponent in bytes
+ *  - Length of the modulus in bytes
+ *  - Value of the exponent in bytes
+ * @param  key Input private key
+ * @return     Byte[] representation of the key
+ */
 private final byte[] serializePrivateKey(RSAPrivateKey key) {
         BigInteger exponent = key.getPrivateExponent();
         BigInteger modulus = key.getModulus();
@@ -618,7 +647,21 @@ private final byte[] serializePrivateKey(RSAPrivateKey key) {
         return buffer;
 }
 
-//reads the key from the buffer and stores it inside the key object
+/**
+ * Translate a byte array into a public key. Closely accompanies the
+ * serializeKey function as it uses the same format:
+ * [2] [expLen] [2] [modLen]
+ * with the following contents, listed per block from left to right:
+ *  - Length of the exponent in bytes
+ *  - Value of the exponent in bytes
+ *  - Length of the modulus in bytes
+ *  - Value of the exponent in bytes
+ * @param  buffer    Input byte array object that contains the byte
+ * representation of the key
+ * @param  offset    Offset in previously mentioned byte array
+ * @return           Public key object based on the byte array
+ * @throws Exception Invalid exponent or modulus exception
+ */
 private final RSAPublicKey deserializeKey(byte[] buffer, short offset) throws Exception {
         short expLen = bufferToShort(buffer, offset);
         short modLen = bufferToShort(buffer, (short) ((short) offset + (short)((short) 2 +expLen)));
@@ -637,7 +680,25 @@ private final RSAPublicKey deserializeKey(byte[] buffer, short offset) throws Ex
         return (RSAPublicKey) generatePublic;
 }
 
-//reads the key from the buffer and stores it inside the key object
+/**
+ * A niche copy of the deserializeKey function that handles private keys instead
+ * of public keys.
+ * As private keys are never sent in the protocol this function is solely used
+ * to store private keys on the master's device.
+ * Translate a byte array into a private key. Closely accompanies the
+ * serializeKey function as it uses the same format:
+ * [2] [expLen] [2] [modLen]
+ * with the following contents, listed per block from left to right:
+ *  - Length of the exponent in bytes
+ *  - Value of the exponent in bytes
+ *  - Length of the modulus in bytes
+ *  - Value of the exponent in bytes
+ * @param  buffer    Input byte array object that contains the byte
+ * representation of the key
+ * @param  offset    Offset in previously mentioned byte array
+ * @return           Private key object based on the byte array
+ * @throws Exception Invalid exponent or modulus exception
+ */
 private final RSAPrivateKey deserializePrivateKey(byte[] buffer, short offset) throws Exception {
         short expLen = bufferToShort(buffer, offset);
         short modLen = bufferToShort(buffer, (short) ((short) offset + (short)((short) 2 +expLen)));
@@ -656,6 +717,37 @@ private final RSAPrivateKey deserializePrivateKey(byte[] buffer, short offset) t
         return (RSAPrivateKey) generatePrivate;
 }
 
+/**
+ * Frame building initializer, largely unmodified from source by:
+ * @author Martijno
+ * @author woj
+ * @author Pim Vullers
+ * @param parent Application frame
+ */
+void buildGUI(JFrame parent) {
+        setLayout(new BorderLayout());
+        display = new JTextField(DISPLAY_WIDTH);
+        display.setHorizontalAlignment(JTextField.RIGHT);
+        display.setEditable(false);
+        display.setFont(FONT);
+        display.setBackground(Color.darkGray);
+        display.setForeground(Color.green);
+        add(display, BorderLayout.NORTH);
+        keypad = new JPanel(new GridLayout(3, 1));
+        key(NAME_INIT);
+        key(NAME_CHAR);
+        key(NAME_PUMP);
+        add(keypad, BorderLayout.CENTER);
+        parent.addWindowListener(new CloseEventListener());
+}
+
+/**
+ * Keypad builder, largely unmodified from source by:
+ * @author Martijno
+ * @author woj
+ * @author Pim Vullers
+ * @param txt Button display text
+ */
 void key(String txt) {
         if (txt == null) {
                 keypad.add(new JLabel());
@@ -666,8 +758,12 @@ void key(String txt) {
         }
 }
 
-
-
+/**
+ * Translates a short to a byte array. Usually utilized for sending
+ * integers to the slave.
+ * @param  s Integer to be translated
+ * @return   Byte[] representation of the integer
+ */
 public byte[] shortToByteArray(short s){
         byte[] b = new byte[2];
         b[0] = (byte)((s >> 8) & 0xff);
@@ -675,14 +771,39 @@ public byte[] shortToByteArray(short s){
         return b;
 }
 
+/**
+ * Translates a byte array into a short. Usually utilized for receiving
+ * integers from the slave.
+ * @param  buffer Buffer that contains the integer in byte representation
+ * @param  offset Offset in previously mentioned buffer
+ * @return        Integer found at the offset in the buffer
+ */
 public short bufferToShort(byte[] buffer, short offset){
         return (short)( ((buffer[offset] & 0xff)<<8) | (buffer[(short)(offset+1)] & 0xff) );
 }
 
+/**
+ * Randomly generates a short integer to be used as nonce.
+ * @return Random nonce
+ */
 public short generateNonce(){
         return (short) rng.nextInt(Short.MAX_VALUE+1);
 }
 
+/**
+ * Extension to the decrypt function that can process two blocks instead of one.
+ * This function has not been scaled up to contain a for-loop. This is because
+ * in it's current form it closely resembles it's sister function on the javacard.
+ * We have abstained from using constructs like for-loop on the javacard for
+ * performance reasons. No protocol or transaction in our design document
+ * requires encrypt or decrypt operations on more than two blocks.
+ * @param  bArray    Array that contains the encrypted text
+ * @param  key       Key required to decrypt the text
+ * @param  length    Length of the text
+ * @param  offset    Offset in the source buffer
+ * @return           Plaintext
+ * @throws Exception Decrypt error
+ */
 byte[] decrypt_double(byte[] bArray, Key key, int length, int offset) throws Exception {
         byte[] a = decrypt(bArray, key, RSA_BLOCKSIZE, offset);
         byte[] b = decrypt(bArray, key, RSA_BLOCKSIZE, offset+RSA_BLOCKSIZE);
