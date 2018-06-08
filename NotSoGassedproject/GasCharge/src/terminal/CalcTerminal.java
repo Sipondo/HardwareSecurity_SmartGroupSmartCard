@@ -123,6 +123,11 @@ JPanel keypad;
 
 CardChannel applet;
 
+/**
+ * This is the Terminal application for the NotSoGassed Project.
+ * The application has been based on previous work from XXX.
+ * @param parent The frame of the application.
+ */
 public CalcTerminal(JFrame parent) {
         Security.addProvider(new BouncyCastleProvider());
         rng = new Random();
@@ -199,6 +204,16 @@ public CalcTerminal(JFrame parent) {
         (new CardThread()).start();
 }
 
+/**
+ * This function resolves collecting the slave's extendedBuffer.
+ * This is initiated by an APDU stream request sent from the slave.
+ * The function is called within the readResponseAPDU function. It
+ * is checked before the actual header is checked as incoming APDU
+ * stream blocks do not contain a header.
+ * The amount of required blocks is determined by the APDU stream request.
+ * @param  data      The APDU data buffer
+ * @throws Exception Stream parse exception
+ */
 void resolveIncomingAPDUStream(byte[] data) throws Exception {
         System.arraycopy(data, 0, extendedBuffer, (int) incomingApduStreamPointer*(int) RSA_BLOCKSIZE, data.length);
         incomingApduStreamPointer = (byte) (incomingApduStreamPointer + (byte) 1);
@@ -290,6 +305,14 @@ void resolveIncomingAPDUStream(byte[] data) throws Exception {
         }
 }
 
+/**
+ * This function processes APDU streams sent to the slave.
+ * This function is only utilized after the master has sent an APDU stream
+ * request to the slave.
+ * The header contains the two bytes outgoingStreamIndexand outgoingStreamEnd
+ * which determine which block has to be sent.
+ * @param data The APDU data buffer
+ */
 void resolveOutgoingAPDUStream(byte[] data){
         byte outgoingStreamIndex = data[2];
         byte outgoingStreamEnd = data[3];
