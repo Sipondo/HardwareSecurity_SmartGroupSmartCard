@@ -53,10 +53,15 @@ import javax.crypto.Cipher;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
-
-
-//import javacard.security.RandomData;
-
+/**
+ * This is the Terminal application for the NotSoGassed Project, written by:
+ * @author Ties Robroek
+ * @author Mathijs Sonnemans
+ * The application has been based on previous work (where credited) from:
+ * @author Martijn Oostdijk
+ * @author Wojciech Mostowski
+ * @author Pim Vullers
+ */
 public class CalcTerminal extends JPanel implements ActionListener {
 
 static final String TITLE = "Terminal";
@@ -124,8 +129,7 @@ JPanel keypad;
 CardChannel applet;
 
 /**
- * This is the Terminal application for the NotSoGassed Project.
- * The application has been based on previous work from XXX.
+ * Generic contructor for the application.
  * @param parent The frame of the application.
  */
 public CalcTerminal(JFrame parent) {
