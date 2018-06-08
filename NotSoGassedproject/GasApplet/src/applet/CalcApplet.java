@@ -174,21 +174,14 @@ public void process(APDU apdu) throws ISOException, APDUException {
                         if (incomingApduStreamResolve==INST_INIT_FINISH) {
                                 cardKeyCertificate = new byte[extendedBufferLength];
                                 Util.arrayCopy(extendedBuffer, (short) 0, cardKeyCertificate, (short) 0, extendedBufferLength);
-                                //Util.arrayCopy(extendedBuffer, (short) 0, cryptoBuffer, (short) 0, extendedBufferLength);
-                                //decrypt_double(globalPublicKey, extendedBufferLength,(short) 0);
+
                                 buffer[0] = 0;
                                 buffer[1] = 0;
                                 buffer[2] = 0;
                                 buffer[3] = 0;
                                 buffer[4] = 11;
                                 buffer[5] = 0;
-                                //serializePrivateKey(cardPrivateKey, extendedBuffer, (short) 6);
-                                // buffer[12] = cryptoBuffer[0];
-                                // buffer[13] = cryptoBuffer[1];
-                                // buffer[14] = cryptoBuffer[2];
-                                // buffer[15] = cryptoBuffer[3];
-                                // buffer[16] = cryptoBuffer[4];
-                                // buffer[17] = cryptoBuffer[5];
+
 
                                 messageLength = (short) 6;
                         }
@@ -262,15 +255,9 @@ public void process(APDU apdu) throws ISOException, APDUException {
 
                                         serializeKey(cardPublicKey, extendedBuffer, outgoingStreamLength);
                                         outgoingStreamLength = (short) (outgoingStreamLength + (short) 135);
-
                                         Util.arrayCopy(cardKeyCertificate, (short) 0, extendedBuffer, outgoingStreamLength, RSA_BLOCKSIZE);
-
-                                        outgoingStreamLength = (short) 269;//(short) (outgoingStreamLength + RSA_BLOCKSIZE);
-
+                                        outgoingStreamLength = (short) 269;
                                         Util.arrayCopy(extendedBuffer, (short) 0, cryptoBuffer, (short) 0, outgoingStreamLength);
-                                        //byte[] buftest = new byte[]{1,1};
-                                        //Util.arrayCopy(buftest, (short) 0, cryptoBuffer, (short) 0, (short) 1);
-                                        //outgoingStreamLength = (short)(sign((short) 2, extendedBuffer, (short) 0, (short) 1) + outgoingStreamLength);
                                         outgoingStreamLength = (short)(sign(outgoingStreamLength, extendedBuffer, (short) 0, outgoingStreamLength) + outgoingStreamLength);
 
                                         outgoingStreamLength = (short)(outgoingStreamLength+RSA_BLOCKSIZE);
@@ -600,44 +587,21 @@ void handlePumpingProtocolRequest(byte[] buffer){
 }
 
 void handlePumpingAuthResponse(byte[] buffer){
-
-        //Handle input: Terminal -> Card: Pump auth response, card auth request\nencrypt(N2..N1..pk(t)..C(t), pk(c))
-        //TODO: decrypt en pak uit
-
-        // byte publicKeyTerminal = buffer[7];
-        // byte certificateTerminal = buffer[8];
-        // byte receivedPublicKey = buffer[9];
-
-        //TODO: Test of receivedPublicKey == publicKey
-
-        //Handle output: Card -> Terminal: Card auth response\n encrypt(A..N1..N2, pk(t))
-        //TODO: encrypt een output
-        //handleInitialize(buffer);
-        // buffer[5] = (byte) 221;
         buffer[0] = 0;
         buffer[1] = 0;
         buffer[2] = 0;
         buffer[3] = 0;
         buffer[4] = 100;
         RSAPublicKey globalPublicKey = deserializeKey(buffer, (short) 5);
-        //buffer[11] = buffer[4];
 
         short crypto_l = serializeKey(globalPublicKey, cryptoBuffer, (short) 0);
         outgoingStreamLength = encrypt_double(crypto_l, globalPublicKey, extendedBuffer, (short) 0);
         byte[] b = shortToByteArray((short)(outgoingStreamLength/RSA_BLOCKSIZE));
         buffer[5] = b[1];
         messageLength = (short) 6;
-        //messageLength = (short) ((short) 5 + encrypt((short) 110, globalPublicKey, extendedBuffer, (short) 5));
-        //messageLength = (short) ((short) 5 + encrypt((short) 25, globalPublicKey, buffer, (short) 5));
-        //messageLength = (short)((short) ((short) 0 + encrypt_double(crypto_l, globalPublicKey, extendedBuffer, (short) 0)) / (short) 2);
 }
 
 void finishPumpingAllowanceUpdate(byte[] buffer){
-
-        //Handle input: Terminal -> Card: Allowance update\n encrypt(A..N1..N2, pk(c))
-        //TODO: pak de encrypt uit
-
-
         incomingApduStreamResolve = buffer[1];
         incomingApduStreamPointer = 0;
         incomingApduStreamLength = buffer[2];
@@ -655,11 +619,6 @@ void finishPumpingAllowanceUpdate(byte[] buffer){
 }
 
 void realFinishUpCharging(byte[] buffer){
-
-        //Handle input: Terminal -> Card: Allowance update\n encrypt(A..N1..N2, pk(c))
-        //TODO: pak de encrypt uit
-
-
         incomingApduStreamResolve = buffer[1];
         incomingApduStreamPointer = 0;
         incomingApduStreamLength = buffer[2];

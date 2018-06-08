@@ -13,6 +13,16 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.List;
 
+import java.io.IOException;
+import java.io.Writer;
+import java.io.Reader;
+import java.io.BufferedWriter;
+import java.io.BufferedReader;
+import java.io.OutputStreamWriter;
+import java.io.InputStreamReader;
+import java.io.FileOutputStream;
+import java.io.FileInputStream;
+
 import javax.smartcardio.Card;
 import javax.smartcardio.CardChannel;
 import javax.smartcardio.CardException;
@@ -71,9 +81,10 @@ private static final String NAME_CHAR = "Charging Protocol";
 private static final String NAME_PUMP = "Pumping Protocol";
 
 
-private static short CHARGE_TO_VALUE = 100;
+private static final short CHARGE_TO_VALUE = 100;
 private static final int RSA_TYPE = 1024;
 private static final int RSA_BLOCKSIZE = 128;     //128 bij 1024
+private static final boolean GENERATE_NEW_KEY = false;
 
 private Random rng;
 
@@ -141,6 +152,38 @@ public CalcTerminal(JFrame parent) {
                 termPublicKey = (RSAPublicKey) pair.getPublic();
                 termPrivateKey = (RSAPrivateKey) pair.getPrivate();
 
+                deserializePrivateKey(serializePrivateKey(globalPrivateKey),(short) 0);
+
+                System.out.println(serializeKey(globalPublicKey).length);
+                System.out.println(serializePrivateKey(globalPrivateKey).length);
+
+                if (GENERATE_NEW_KEY) {
+                        try{
+                                FileOutputStream file = new FileOutputStream("globalkeys");
+                                file.write(serializeKey(globalPublicKey));
+                                file.write(serializePrivateKey(globalPrivateKey));
+                                file.close();
+                                System.out.println("Successfully written keys to file!");
+                        }catch (IOException e) {
+                                System.out.println("Failed to store global keys!");
+                                System.out.println(e);
+                        }
+                }else{
+                  try{
+                          FileInputStream file = new FileInputStream("globalkeys");
+                          //globalPublicKey = deserializeKey(reader.readLine().getBytes(), (short) 0);
+                          byte[] file_contents = new byte[file.available()];
+                          file.read(file_contents);
+                          globalPublicKey = deserializeKey(file_contents, (short) 0);
+                          globalPrivateKey = deserializePrivateKey(file_contents, (short) 135);
+                          file.close();
+                          System.out.println("Successfully read keys from file!");
+                  }catch (IOException e) {
+                          System.out.println("Failed to read global keys!");
+                          System.out.println(e);
+                  }
+                }
+
                 termCertificate = sign(globalPrivateKey, serializeKey(termPublicKey));
 
 
@@ -201,18 +244,18 @@ void resolveIncomingAPDUStream(byte[] data) throws Exception {
 
                         boolean unsatisfied = true;
                         short newA = 0;
-                        while (unsatisfied){
-                          String amountQuery = JOptionPane.showInputDialog(frame,"Desired amount? Current allowance: " + A, null);
-                          try{
-                            newA = Short.parseShort(amountQuery);
-                            if (newA < 0){
-                              throw new Exception();
-                            }
-                            if (newA > A){
-                              throw new Exception();
-                            }
-                            unsatisfied = false;
-                          }catch(Exception e){}
+                        while (unsatisfied) {
+                                String amountQuery = JOptionPane.showInputDialog(frame,"Desired amount? Current allowance: " + A, null);
+                                try{
+                                        newA = Short.parseShort(amountQuery);
+                                        if (newA < 0) {
+                                                throw new Exception();
+                                        }
+                                        if (newA > A) {
+                                                throw new Exception();
+                                        }
+                                        unsatisfied = false;
+                                }catch(Exception e) {}
                         }
 
                         A = newA;
@@ -511,6 +554,34 @@ private final byte[] serializeKey(RSAPublicKey key) {
         return buffer;
 }
 
+//reads the key object and stores it into the buffer
+private final byte[] serializePrivateKey(RSAPrivateKey key) {
+        BigInteger exponent = key.getPrivateExponent();
+        BigInteger modulus = key.getModulus();
+
+        byte[] exponentBytes = exponent.toByteArray();
+        byte[] modulusBytes = bigIntFixer(modulus);
+
+        short expLen = (short) exponentBytes.length;
+        short modLen = (short) modulusBytes.length;
+
+        byte[] buffer = new byte[expLen+modLen+4];
+        byte[] b;
+
+        b = shortToByteArray(expLen);
+        buffer[0] = b[0];
+        buffer[1] = b[1];
+
+        System.arraycopy(exponentBytes, 0, buffer, 2, expLen);
+
+        b = shortToByteArray(modLen);
+        buffer[2+expLen] = b[0];
+        buffer[3+expLen] = b[1];
+        System.arraycopy(modulusBytes, 0, buffer, 4+expLen, modLen);
+
+        return buffer;
+}
+
 //reads the key from the buffer and stores it inside the key object
 private final RSAPublicKey deserializeKey(byte[] buffer, short offset) throws Exception {
         short expLen = bufferToShort(buffer, offset);
@@ -527,9 +598,26 @@ private final RSAPublicKey deserializeKey(byte[] buffer, short offset) throws Ex
         KeyFactory kf = KeyFactory.getInstance("RSA");
         Key generatePublic = kf.generatePublic(keySpec);
 
-        RSAPublicKey testKey = (RSAPublicKey) generatePublic;
-
         return (RSAPublicKey) generatePublic;
+}
+
+//reads the key from the buffer and stores it inside the key object
+private final RSAPrivateKey deserializePrivateKey(byte[] buffer, short offset) throws Exception {
+        short expLen = bufferToShort(buffer, offset);
+        short modLen = bufferToShort(buffer, (short) ((short) offset + (short)((short) 2 +expLen)));
+
+        byte[] exponentBytes = Arrays.copyOfRange(buffer, offset+2, offset+2+expLen);
+        byte[] modulusBytes = Arrays.copyOfRange(buffer, offset+4+expLen, offset+4+modLen+expLen);
+
+        BigInteger exponent = new BigInteger(1, exponentBytes);
+        BigInteger modulus = new BigInteger(1, modulusBytes);
+
+        RSAPrivateKeySpec keySpec = new RSAPrivateKeySpec(modulus, exponent);
+
+        KeyFactory kf = KeyFactory.getInstance("RSA");
+        Key generatePrivate = kf.generatePrivate(keySpec);
+
+        return (RSAPrivateKey) generatePrivate;
 }
 
 void key(String txt) {
@@ -647,7 +735,7 @@ public void run() {
                         try {
                                 for(CardTerminal c : cs) {
                                         if (c.isCardPresent()) {
-                                          System.out.println("Found a card!");
+                                                System.out.println("Found a card!");
                                                 try {
                                                         Card card = c.connect("*");
                                                         try {
