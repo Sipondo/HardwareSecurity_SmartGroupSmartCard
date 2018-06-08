@@ -67,29 +67,18 @@ private byte incomingApduStreamResolve;
 private short outgoingStreamLength;
 
 private short cardId;
-private short[] xy;
 
 private short N1;
 private short N2;
 
 private short m;
 
-private byte[] lastOp;
-
-private boolean[] lastKeyWasDigit;
 
 private short messageLength;
 
 private short A;
 
 public CalcApplet() {
-        xy = JCSystem.makeTransientShortArray((short) 2,
-                                              JCSystem.CLEAR_ON_RESET);
-        lastOp = JCSystem.makeTransientByteArray((short) 1,
-                                                 JCSystem.CLEAR_ON_RESET);
-        lastKeyWasDigit = JCSystem.makeTransientBooleanArray((short) 1,
-                                                             JCSystem.CLEAR_ON_RESET);
-
         incomingApduStreamLength = 0;
         incomingApduStreamPointer = 99;
         incomingApduStreamResolve = 0;
@@ -126,10 +115,6 @@ throws SystemException {
 }
 
 public boolean select() {
-        xy[X] = 0;
-        xy[Y] = 0;
-        lastOp[0] = (byte) '=';
-        lastKeyWasDigit[0] = false;
         return true;
 }
 
@@ -691,52 +676,4 @@ void reallyEndPumping(byte[] buffer){
 ///////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////
 
-void digit(byte d) {
-        if (!lastKeyWasDigit[0]) {
-                xy[Y] = xy[X];
-                xy[X] = 0;
-        }
-        xy[X] = (short) ((short) (xy[X] * 10) + (short) (d & 0x00FF));
-        lastKeyWasDigit[0] = true;
-}
-
-void operator(byte op) throws ISOException {
-        switch (lastOp[0]) {
-        case '+':
-                xy[X] = (short) (xy[Y] + xy[X]);
-                break;
-        case '-':
-                xy[X] = (short) (xy[Y] - xy[X]);
-                break;
-        case 'x':
-                xy[X] = (short) (xy[Y] * xy[X]);
-                break;
-        case ':':
-                if (xy[X] == 0) {
-                        ISOException.throwIt(SW_WRONG_DATA);
-                }
-                xy[X] = (short) (xy[Y] / xy[X]);
-                break;
-        default:
-                break;
-        }
-        lastOp[0] = op;
-        lastKeyWasDigit[0] = false;
-}
-
-void mem(byte op) {
-        switch (op) {
-        case 'S':
-                m = xy[X];
-                break;
-        case 'R':
-                xy[Y] = xy[X];
-                xy[X] = m;
-                break;
-        case 'M':
-                m += xy[X];
-                break;
-        }
-        lastKeyWasDigit[0] = false;
-}
 }
