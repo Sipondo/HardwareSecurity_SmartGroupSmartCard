@@ -815,6 +815,15 @@ byte[] decrypt_double(byte[] bArray, Key key, int length, int offset) throws Exc
         return output;
 }
 
+/**
+ * Decrypts a byte array into plaintext.
+ * @param  bArray    Array that contains the encrypted text
+ * @param  key       Key required to decrypt the text
+ * @param  length    Length of the text
+ * @param  offset    Offset in the source buffer
+ * @return           Plaintext
+ * @throws Exception Decrypt error
+ */
 byte[] decrypt(byte[] bArray, Key key, int length, int offset) throws Exception {
         termCipher.init(Cipher.DECRYPT_MODE, key);
 
@@ -822,6 +831,20 @@ byte[] decrypt(byte[] bArray, Key key, int length, int offset) throws Exception 
         return termCipher.doFinal(mes);
 }
 
+/**
+ * Extension to the encrypt function that can process two blocks instead of one.
+ * This function has not been scaled up to contain a for-loop. This is because
+ * in it's current form it closely resembles it's sister function on the javacard.
+ * We have abstained from using constructs like for-loop on the javacard for
+ * performance reasons. No protocol or transaction in our design document
+ * requires encrypt or decrypt operations on more than two blocks.
+ * @param  data      Byte array that contains the plaintext
+ * @param  key       Key to encrypt with
+ * @param  length    Length of the message
+ * @param  offset    Offset of the plaintext in the buffer
+ * @return           Encrypted byte array
+ * @throws Exception Encrypt error
+ */
 byte[] encrypt_double(byte[] data, Key key, int length, int offset) throws Exception {
         byte[] a = encrypt(data, key, 100, offset);
         byte[] b = encrypt(data, key, 100, offset+100);
@@ -833,6 +856,15 @@ byte[] encrypt_double(byte[] data, Key key, int length, int offset) throws Excep
         return output;
 }
 
+/**
+ * Encrypts plaintext into an encrypted byte array.
+ * @param  data      Byte array that contains the plaintext
+ * @param  key       Key to encrypt with
+ * @param  length    Length of the message
+ * @param  offset    Offset of the plaintext in the buffer
+ * @return           Encrypted byte array
+ * @throws Exception Encrypt error
+ */
 byte[] encrypt(byte[] data, Key key, int length, int offset) throws Exception {
         termCipher.init(Cipher.ENCRYPT_MODE, key);
 
@@ -840,30 +872,40 @@ byte[] encrypt(byte[] data, Key key, int length, int offset) throws Exception {
         return termCipher.doFinal(mes);
 }
 
+/**
+ * Create a signature on provided byte array.
+ * @param  key       Key to sign with
+ * @param  plain     Byte array to sign
+ * @return           Byte array containing the signature
+ * @throws Exception Encrypt error
+ */
 private byte[] sign(RSAPrivateKey key, byte[] plain) throws Exception {
         termSignature.initSign(key);
         termSignature.update(plain, 0, plain.length);
         return termSignature.sign();
 }
 
+/**
+ * Verify a signature
+ * @param  key       Key to verify with
+ * @param  plain     Expected plain text
+ * @param  encrypted Encrypted message to be verified
+ * @return           Whether it is legitimate (true) or not
+ * @throws Exception Decrypt error
+ */
 private boolean verify(RSAPublicKey key, byte[] plain, byte[] encrypted) throws Exception {
         termSignature.initVerify(key);
         termSignature.update(plain);
         return termSignature.verify(encrypted, 0, encrypted.length);
 }
 
-void setMemory(boolean b) {
-        String txt = getText();
-        int l = txt.length();
-        if (l < DISPLAY_WIDTH) {
-                for (int i = 0; i < (DISPLAY_WIDTH - l); i++) {
-                        txt = " " + txt;
-                }
-                txt = (b ? "M" : " ") + txt;
-                setText(txt);
-        }
-}
-
+/**
+* Keypad builder, Unmodified from source by:
+* @author Martijno
+* @author woj
+* @author Pim Vullers
+ * @param b Whether the slave is enabled
+ */
 public void setEnabled(boolean b) {
         super.setEnabled(b);
         if (b) {
@@ -877,6 +919,12 @@ public void setEnabled(boolean b) {
         }
 }
 
+/**
+ * Frame loop. Largely unmodified from source by:
+ * @author Martijno
+ * @author woj
+ * @author Pim Vullers
+ */
 class CardThread extends Thread {
 public void run() {
         try {
@@ -944,6 +992,13 @@ public void run() {
 }
 }
 
+/**
+ * Button listener. Largely unmodified from source by:
+ * @author Martijno
+ * @author woj
+ * @author Pim Vullers
+ * @param ae Button pressed
+ */
 public void actionPerformed(ActionEvent ae) {
         try {
                 Object src = ae.getSource();
@@ -969,28 +1024,69 @@ public void actionPerformed(ActionEvent ae) {
         }
 }
 
+/**
+ * Display text getter. Unmodified from source by:
+ * @author Martijno
+ * @author woj
+ * @author Pim Vullers
+ * @return Display text
+ */
 String getText() {
         return display.getText();
 }
 
+/**
+ * Display text setter. Unmodified from source by:
+ * @author Martijno
+ * @author woj
+ * @author Pim Vullers
+ * @param txt Requested display text
+ */
 void setText(String txt) {
         display.setText(txt);
 }
 
+/**
+ * Display text setter. Unmodified from source by:
+ * @author Martijno
+ * @author woj
+ * @author Pim Vullers
+ * @param n Requested display integer
+ */
 void setText(int n) {
         setText(Integer.toString(n));
 }
 
+/**
+ * Dimension getter. Unmodified from source by:
+ * @author Martijno
+ * @author woj
+ * @author Pim Vullers
+ * @return Preferred size
+ */
 public Dimension getPreferredSize() {
         return PREFERRED_SIZE;
 }
 
+/**
+ * Close window listener. Unmodified from source by:
+ * @author Martijno
+ * @author woj
+ * @author Pim Vullers
+ */
 class CloseEventListener extends WindowAdapter {
 public void windowClosing(WindowEvent we) {
         System.exit(0);
 }
 }
 
+/**
+ * Main loop. Unmodified from source by:
+ * @author Martijno
+ * @author woj
+ * @author Pim Vullers
+ * @param arg Unused arguments field
+ */
 public static void main(String[] arg) {
         frame = new JFrame(TITLE);
         Container c = frame.getContentPane();
