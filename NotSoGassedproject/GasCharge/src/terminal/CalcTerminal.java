@@ -211,7 +211,7 @@ public CalcTerminal(JFrame parent) {
  * is checked before the actual header is checked as incoming APDU
  * stream blocks do not contain a header.
  * The amount of required blocks is determined by the APDU stream request.
- * @param  data      The APDU data buffer
+ * @param  data      The incoming APDU data buffer
  * @throws Exception Stream parse exception
  */
 void resolveIncomingAPDUStream(byte[] data) throws Exception {
@@ -311,7 +311,10 @@ void resolveIncomingAPDUStream(byte[] data) throws Exception {
  * request to the slave.
  * The header contains the two bytes outgoingStreamIndexand outgoingStreamEnd
  * which determine which block has to be sent.
- * @param data The APDU data buffer
+ * It should be noted this function takes the incoming APDU buffer and sents
+ * a data stream block. The incoming APDU buffer serves as the confirmation
+ * and the block request from the slave.
+ * @param data The incoming APDU data buffer
  */
 void resolveOutgoingAPDUStream(byte[] data){
         byte outgoingStreamIndex = data[2];
@@ -337,6 +340,16 @@ void resolveOutgoingAPDUStream(byte[] data){
         return;
 }
 
+/**
+ * This function processes APDU objects that are connected to initalization or
+ * APDU streams. These are generally either:
+ *  - Messages short enough to not require a stream
+ *  - Messages requesting a new APDU stream
+ *  - Protocol completed confirmations
+ *
+ * This function is called within readResponseAPDU with lowest priority.
+ * @param data The incoming APDU data buffer
+ */
 void resolveRespondAPDU(byte[] data){
         switch(data[4]) {
         case 10:  //Ontvang init 2
