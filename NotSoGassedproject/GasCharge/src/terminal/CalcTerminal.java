@@ -26,6 +26,7 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import javax.swing.JOptionPane;
 
 import java.security.SecureRandom;
 import java.math.BigInteger;
@@ -48,12 +49,12 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 public class CalcTerminal extends JPanel implements ActionListener {
 
-private static final long serialVersionUID = 1L;
 static final String TITLE = "Terminal";
 static final Font FONT = new Font("Monospaced", Font.BOLD, 24);
 static final Dimension PREFERRED_SIZE = new Dimension(300, 300);
 
 static final int DISPLAY_WIDTH = 20;
+static JFrame frame;
 static final String MSG_ERROR = "    -- error --     ";
 static final String MSG_DISABLED = " -- insert card --  ";
 static final String MSG_INVALID = " -- invalid card -- ";
@@ -70,7 +71,7 @@ private static final String NAME_CHAR = "Charging Protocol";
 private static final String NAME_PUMP = "Pumping Protocol";
 
 
-
+private static short CHARGE_TO_VALUE = 100;
 private static final int RSA_TYPE = 1024;
 private static final int RSA_BLOCKSIZE = 128;     //128 bij 1024
 
@@ -189,17 +190,34 @@ void resolveIncomingAPDUStream(byte[] data) throws Exception {
                         RSAPublicKey cardKey = deserializeKey(recpkC, (short) 0);
 
                         byte[] plain = Arrays.copyOfRange(extendedBuffer,0,269);
-                        System.out.println(plain.length);
                         if (!(verify(cardKey,plain,recsign))) {
                                 return;
                         }
 
-                        System.out.println("fine");
                         //apdustream voor A, sign(a, N1, N2)
                         byte[] paUnsigned = new byte[6];
                         byte[] b;
                         A = recA;
-                        b = shortToByteArray(recA);
+
+                        boolean unsatisfied = true;
+                        short newA = 0;
+                        while (unsatisfied){
+                          String amountQuery = JOptionPane.showInputDialog(frame,"Desired amount? Current allowance: " + A, null);
+                          try{
+                            newA = Short.parseShort(amountQuery);
+                            if (newA < 0){
+                              throw new Exception();
+                            }
+                            if (newA > A){
+                              throw new Exception();
+                            }
+                            unsatisfied = false;
+                          }catch(Exception e){}
+                        }
+
+                        A = newA;
+
+                        b = shortToByteArray(A);
                         paUnsigned[0] = b[0];
                         paUnsigned[1] = b[1];
                         extendedBuffer[0] = b[0];
@@ -293,7 +311,7 @@ void resolveRespondAPDU(byte[] data){
                 byte[] b;
                 N2 = bufferToShort(data, (short) 5);
 
-                A = (short) 70;
+                A = CHARGE_TO_VALUE;
                 b = shortToByteArray(N1);
                 plain[0] = b[0];
                 plain[1] = b[1];
@@ -411,10 +429,6 @@ public ResponseAPDU startAPDUChain(byte ins) {
         case INST_CHARGING_REQUEST:
                 N1 = generateNonce();
                 byte[] data = shortToByteArray(N1);
-
-                System.out.println("--------------------");
-                System.out.println((short) data[0]);
-                System.out.println((short) data[1]);
                 apdu = new CommandAPDU(0, ins, 0, 0, data);
                 break;
 
@@ -427,7 +441,6 @@ public ResponseAPDU startAPDUChain(byte ins) {
                 System.arraycopy(tKeySer, 0, extendedBuffer, 2, tKeySer.length);
                 System.arraycopy(termCertificate, 0, extendedBuffer, 2+tKeySer.length, termCertificate.length);
                 outgoingStreamLength = (short)(2+tKeySer.length+termCertificate.length);
-                System.out.println(outgoingStreamLength);
                 apdu = new CommandAPDU(0, ins, 3, 0, shortToByteArray(outgoingStreamLength));
                 break;
         default:
@@ -634,6 +647,7 @@ public void run() {
                         try {
                                 for(CardTerminal c : cs) {
                                         if (c.isCardPresent()) {
+                                          System.out.println("Found a card!");
                                                 try {
                                                         Card card = c.connect("*");
                                                         try {
@@ -733,7 +747,7 @@ public void windowClosing(WindowEvent we) {
 }
 
 public static void main(String[] arg) {
-        JFrame frame = new JFrame(TITLE);
+        frame = new JFrame(TITLE);
         Container c = frame.getContentPane();
         CalcTerminal panel = new CalcTerminal(frame);
         c.add(panel);
