@@ -1,2 +1,0 @@
-javac terminal/CalcTerminal.java
-java terminal.CalcTerminal
