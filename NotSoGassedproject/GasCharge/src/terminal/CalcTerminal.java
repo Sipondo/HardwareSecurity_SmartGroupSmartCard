@@ -85,7 +85,7 @@ private static final String NAME_INIT = "Initialization Protocol";
 private static final String NAME_CHAR = "Charging Protocol";
 private static final String NAME_PUMP = "Pumping Protocol";
 
-
+private static final byte NEW_CARD_ID = 1; //ID used for card init. Static for demonstration purposes.
 private static final short CHARGE_TO_VALUE = 100;
 private static final int RSA_TYPE = 1024;
 private static final int RSA_BLOCKSIZE = 128;     //128 bij 1024
@@ -367,7 +367,7 @@ void resolveRespondAPDU(byte[] data){
 
                         byte[] id = new byte[6];
                         id[0] = 0;
-                        id[1] = 1;
+                        id[1] = NEW_CARD_ID; //For demonstration purposes we simply assign 1 byte
                         id[2] = 0;
                         id[3] = 0;
 
